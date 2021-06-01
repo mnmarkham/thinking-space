@@ -716,7 +716,10 @@ def upper_integrand_G(xi, mx, sigma, star):
     return xi**2 * nx_xi(mx, xi, star) * R_gould(mx, xi, sigma, star)
 
 def lower_integrand_G(xi, mx, sigma, star):
+    print(xi)
     return xi**2 * nx_xi(mx, xi, star)
+
+
 
 def evap_coeff_G(mx, sigma, star):
     xi1 = xis[-1]
