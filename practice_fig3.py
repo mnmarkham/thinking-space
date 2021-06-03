@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 ####################################################################################
 #Mathematical Libraries
 import numpy as np
@@ -74,7 +75,7 @@ class PopIIIStar:
 M100 = PopIIIStar(100, 10**0.6147, 10**6.1470, 1.176e8, 32.3, 10**6)
 M300 = PopIIIStar(300, 10**0.8697, 10**6.8172, 1.245e8, 18.8, 10**6)
 M1000 = PopIIIStar(1000, 10**1.1090, 10**7.3047, 1.307e8, 10.49, 10**6)
-stars_list = (M300, M1000)
+stars_list = [M300, M1000]
 
 #####################################################################################
  #Capture rate function as defined in IZ2019 which returns array of Cns up to a cutoff as well as Ctot
@@ -157,10 +158,7 @@ def captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon):
         N     += 1
 
         # caluclate p_tau, probability of N scatters
-        if tau != 0:
-            pn_tau = D(2/tau**2)*D(N)*D(sc.gammainc(float(N+1),float(tau)))
-        else:
-            pn_tau = 0
+        pn_tau = D(2/tau**2)*D(N)*D(sc.gammainc(float(N+1),float(tau)))
 
         # calculate V_N, velocity of DM particle after N scatters
         VN     = Vesc*D(1-((beta)/2))**D((-1*(N-1))/2)
@@ -275,6 +273,66 @@ def sigma_mchi_pureH(star, Mchi, rho_chi, vbar): #Takes M, R and L in solar unit
     return sigma
 
 ##################################################################################
+
+#~~~~~~~~~~~~~~~~~~~~~CONSTANT DEFINITIONS - cgs units~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Constants Definition
+kb = 1.380649e-16 #Boltzmann constant in cgs Units (erg/K)
+G = 6.6743*10**(-8) # gravitational constant in cgs units
+hbar = 1.05e-27 #hbar in SI units
+c = 3e10 #Speed of light in SI units
+
+#Retrieves solution to laneEmden n=3 
+def retrieve_LaneEmden():
+    xis = []
+    theta_arr = []
+    with open('Lane_Emden.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            xis.append(float(row[0]))
+            theta_arr.append(float(row[1]))
+            
+    return (xis, theta_arr)
+
+
+#Retrieves tau(mx) from stored data
+def retrieve_tau(star):
+    mx = []
+    tau = []
+    with open('tau_mx_M%i.csv'%star.mass) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            mx.append(float(row[0]))
+            tau.append(float(row[1]))
+            
+    return (mx, tau)
+
+tau_fit_funcs = []
+#Tau fits and function that will give output based on mx and star
+for star in stars_list:
+    mx_tau_fit, tau_temp = retrieve_tau(star)
+    tau_fit_funcs.append(UnivariateSpline(mx_tau_fit, tau_temp, k = 5, s = 0))
+
+def tau_fit(mx, star): #Returns tau from fitting function based on star and dm mass
+    if(mx > 100):
+        tau_val = 1
+    else:
+        if(star.mass == 100):
+            tau_val = tau_fit_funcs[0](mx)
+        elif(star.mass == 300):
+            tau_val = tau_fit_funcs[1](mx)
+        elif(star.mass == 1000):
+            tau_val = tau_fit_funcs[2](mx)
+        else:
+            tau_val = 1
+    return tau_val
+    
+
+
+# Solution to laneEmden Equation
+xis, theta_arr = retrieve_LaneEmden()
+# interpolating points for theta function
+theta = UnivariateSpline(xis, theta_arr, k = 5, s = 0)
+
 #Density at center of polytrope
 def polytrope3_rhoc(star):
 
@@ -339,9 +397,8 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma_xenon, Ann_type): 
     if (sigma_xenon == True):
         sigma = 1.26*10**(-40)*(mx/10**8)
     else:
-        #rho_adjust = 10**19/rho_chi
-        #sigma = sigma_mchi_pureH(star, mx, 10**19, vbar) * rho_adjust
-        sigma = sigma_xenon
+        rho_adjust = 10**19/rho_chi
+        sigma = sigma_mchi_pureH(star, mx, 10**19, vbar) * rho_adjust
 
     #Calculating the DM capture rate
     C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
@@ -795,7 +852,7 @@ t_lines = ['--']
 t_lines2 = [':']
 
 #Different initial baryonic densities we are taking --> Corresponds to initial DM densities
-n_baryons = np.array([14, 18])
+n_baryons = np.array([14.5, 18.2])
 rho_core = baryonic_core_density(n_baryons)
 rho_adjust = (19 - rho_core)
 
@@ -814,25 +871,25 @@ for star in stars_list:
     for k in range(0, len(mchi)):
         sig_temp.append(sigma_mchi_pureH(star, mchi[k], 10**19, vbar))
 
-    for j in range(0, len(n_baryons)):
-        plt.plot(mchi, np.array(sig_temp)*(10**rho_adjust[j]), ls='-', linewidth = 3, color = palette(j/len(n_baryons)), label = '$\\rho_X(t = 0) \sim 10^{%i}$'%math.ceil(rho_core[j]))
+    #for j in range(0, len(n_baryons)):
+        #plt.plot(mchi, np.array(sig_temp)*(10**rho_adjust[j]), ls='-', linewidth = 1, color = palette(j/len(n_baryons)), label = '$\\rho_X(t = 0) \sim 10^{%i}$'%math.ceil(rho_core[j]))
 
 
     for i in range(0, len(t)):
 
         sigma = []
-        sigma_WC = []
+        #sigma_WC = []
         for m in range(0, len(n_baryons)):
 
             sigma.append([])
-            sigma_WC.append([])
+            #sigma_WC.append([])
             for l in range(0, len(mchi)):
 
                 #Plateau density
                 rho_plateau = rho_plat(star, frac_tau, mchi[l], 10**(rho_core[m]), vbar, unitary, thermal, ann_type, t[i])
 
                 #WC density
-                rho_WC = rho_weak_cusp(star, frac_tau, mchi[l], 10**(rho_core[m]), vbar, unitary, thermal, ann_type, t[i], n_baryons[m])
+                #rho_WC = rho_weak_cusp(star, frac_tau, mchi[l], 10**(rho_core[m]), vbar, unitary, thermal, ann_type, t[i], n_baryons[m])
 
 
                 #Density at given time
@@ -842,10 +899,10 @@ for star in stars_list:
                 sigma[m].append(sig_temp[l]*(10**19/(rho_amb)))
 
                 #Sigma using weak cusp
-                sigma_WC[m].append(sig_temp[l]*(10**19/(rho_WC)))
+                #sigma_WC[m].append(sig_temp[l]*(10**19/(rho_WC)))
 
             plt.plot(mchi, sigma[m], ls = t_lines[i], color = palette(m/len(n_baryons)), label = '$\\rho_{AP}(t = 10^{%i}$ years$)$'%int(logt[i]))
-            plt.plot(mchi, sigma_WC[m], ls = t_lines2[i], color = palette(m/len(n_baryons)), label = '$\\rho_{WC}(t = 10^{%i}$ years$)$'%logt[i])
+            #plt.plot(mchi, sigma_WC[m], ls = t_lines2[i], color = palette(m/len(n_baryons)), label = '$\\rho_{WC}(t = 10^{%i}$ years$)$'%logt[i])
 
 
 #~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -858,6 +915,6 @@ plt.xlim(mchi[0], mchi[-1])
 plt.ylim(plt.ylim()[0], 10**-30)
 plt.ylabel('$\sigma$ [$cm^2$]', fontsize =15)
 plt.title('Upper Bounds on $\sigma$, Varying $M_\star$ and $\\rho_\chi$')
-plt.legend(loc = 'best', ncol = 2)
+plt.legend(loc = 'lower right', ncol = 2)
 plt.savefig('sigma_mchi_RhoBands_Conservative.png', dpi = 200)
 plt.show()

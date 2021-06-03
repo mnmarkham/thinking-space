@@ -705,7 +705,7 @@ rho_chi_adjust = [10**6, 10**3]
 E_dat = [E_300M_dat, E_1000M_dat]
 
 mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
-sigma = 10**-41
+sigma = 10**-40
 N_chi = [ [ [],[] ],[ [],[] ] ]
 M_DM = [ [ [],[] ],[ [],[] ] ]
         
@@ -741,13 +741,13 @@ for i in range(0, len(M)):
 mchi_300M_dat = np.asarray(mchi_300M_dat)
 MDM_300M_dat = np.asarray(M_DM[0][0])
 output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-file = "mchi_MDM_300M.csv"
+file = "mchi_MDM_300M_highsig.csv"
 np.savetxt(file,output,delimiter=',')
 
 mchi_1000M_dat = np.asarray(mchi_1000M_dat)
 MDM_1000M_dat = np.asarray(M_DM[1][0])
 output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-file = "mchi_MDM_1000M.csv"
+file = "mchi_MDM_1000M_highsig.csv"
 np.savetxt(file,output,delimiter=',')
 
 
@@ -759,7 +759,7 @@ plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
 plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
 #plt.ylim(plt.ylim()[0], 10**-30)
 plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
-plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-41}$ for CoSIMP DM')
+plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
 plt.legend(loc = 'best', ncol = 2)
 plt.savefig('CoSIMP_DM_Core_highersig.png', dpi = 200)
 #plt.show()
@@ -811,17 +811,17 @@ for i in range(0, len(M)):
 
 #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-##mchi_300M_dat = np.asarray(mchi_300M_dat)
-##MDM_300M_dat = np.asarray(M_DM[0][0])
-##output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-##file = "mchi_MDM_300M.csv"
-##np.savetxt(file,output,delimiter=',')
-##
-##mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-##MDM_1000M_dat = np.asarray(M_DM[1][0])
-##output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-##file = "mchi_MDM_1000M.csv"
-##np.savetxt(file,output,delimiter=',')
+mchi_300M_dat = np.asarray(mchi_300M_dat)
+MDM_300M_dat = np.asarray(M_DM[0][0])
+output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
+file = "mchi_MDM_300M_lowsig.csv"
+np.savetxt(file,output,delimiter=',')
+
+mchi_1000M_dat = np.asarray(mchi_1000M_dat)
+MDM_1000M_dat = np.asarray(M_DM[1][0])
+output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
+file = "mchi_MDM_1000M_lowsig.csv"
+np.savetxt(file,output,delimiter=',')
 
 
 #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
