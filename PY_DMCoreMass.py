@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #Mathematical Libraries
 import numpy as np
 import mpmath as mp
@@ -750,15 +751,24 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma_xenon, Ann_type): 
 def Ca_22(mx, star, rho_chi, vbar, sigma):
     #sigv given by lower bounds
     sigv = sigV_lowerBound(star, 0.01, mx, rho_chi, vbar, sigma, 22)
+    print(sigv)
     
     #Defining top and bottom integrands using Fully polytropic approximation
     def integrand_top_Ca(xi, mx, star):
-        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+        # return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+        return sigv * xi**2 * nx_xi(mx, xi, star)**2
     def integrand_bottom_Ca(xi, mx, star):
-        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+        # return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+        return xi**2 * nx_xi(mx, xi, star)
     
     #Integrate over star
-    return quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+    ### TODO: LOOK HERE!!!
+    ### BTM sho
+    top = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]
+    btm = quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+    print('top', top)
+    print('btm', btm)
+    return top/btm
 
 #Equilibration timescale -- 2-->2
 def tau_eq_22(mx, star, rho_chi, vbar, sigma_xenon = False):
@@ -772,7 +782,9 @@ def tau_eq_22(mx, star, rho_chi, vbar, sigma_xenon = False):
     C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
     
     #Annihlation coefficient
+    print('Ca_22(', mx, rho_chi, vbar, sigma, ')')
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
+    print('Ca =', Ca)
     
     #Equilibration timescale
     tau_eq = (C * Ca)**(-1/2)
@@ -864,6 +876,7 @@ if plottype == 'low mchi':
 
     #Looping over all Stellar Masses
     for i in range(0, len(M)):
+        print("working on star", M[i])
 
         #Color formatting of plot
         colors = palette(i/len(M))
@@ -871,9 +884,11 @@ if plottype == 'low mchi':
         area_color[3] = 0.2
 
         for j in range(0, len(rho_chi_list)):
+            print("working on rho_chi", rho_chi_list[j])
 
             #Looping over all DM masses
             for k in range(0, len(mchi_dat[i])):
+                print("working on m_chi", mchi_dat[i][k])
                 N_chi[i][j].append(N_chi_func_32(mchi_dat[i][k], sigma, stars_list[i], rho_chi_list[j], vbar, E_dat[i][k]))
                 M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][k])
 
@@ -1011,6 +1026,7 @@ elif plottype == 'high mchi':
 
     #Looping over all Stellar Masses
     for i in range(0, len(M)):
+        print("working on star", M[i])
 
         #Color formatting of plot
         colors = palette(i/len(M))
@@ -1018,9 +1034,11 @@ elif plottype == 'high mchi':
         area_color[3] = 0.2
 
         for j in range(0, len(rho_chi_list)):
+            print("working on rho_chi", rho_chi_list[j])
 
             #Looping over all DM masses
             for k in range(0, len(mchi_dat)):
+                print("working on m_chi", mchi_dat[k])
 
                 if mchi_dat[k] < 10**6:
                     N_chi[i][j].append(N_chi_func_22(mchi_dat[k], sigma, stars_list[i], rho_chi_list[j], vbar, E))
