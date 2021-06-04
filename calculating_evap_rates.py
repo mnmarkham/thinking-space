@@ -76,7 +76,7 @@ class PopIIIStar:
 M100 = PopIIIStar(100, 10**0.6147, 10**6.1470, 1.176e8, 32.3, 10**6)
 M300 = PopIIIStar(300, 10**0.8697, 10**6.8172, 1.245e8, 18.8, 10**6)
 M1000 = PopIIIStar(1000, 10**1.1090, 10**7.3047, 1.307e8, 10.49, 10**6)
-stars_list = (M100, M300, M1000)
+stars_list = [M300, M1000]
 
 
 #Capture rate function as defined in IZ2019 which returns array of Cns up to a cutoff as well as Ctot
@@ -215,7 +215,6 @@ def capture_analytic(mx, star, rhox, vbar, sigma):
     mx_k1 = 3 * 0.938 * star.get_vesc_surf()**2/vbar**2
     tau = 2 * star.get_radius_cm() * sigma * star.get_num_density()
     k = 3 * 0.938 * star.get_vesc_surf()**2/(mx * vbar**2)
-    print(k)
 
     if((sigma >= sig_tau1) and (k*tau <= 1)):
         cap = capture_regionI(mx, star, rhox, vbar, sigma)
@@ -400,7 +399,7 @@ def rho_mchi_pureH(M, R, L, Mchi, vbar, sigma):
     LeddFactor = 3.7142e4;
     Ledd = Lsun*M*LeddFactor
 
-     #DM Capture rate for measuring a star of mass M shining at eddington limit due to additional DM luminosity
+    #DM Capture rate for measuring a star of mass M shining at eddington limit due to additional DM luminosity
     Ctot_atEdd = D((Ledd - L)/((2/3)*Mchi_erg))
 
     #First guess for rho_chi
@@ -514,12 +513,12 @@ def tau_fit(mx, star): #Returns tau from fitting function based on star and dm m
     if(mx > 100):
         tau_val = 1
     else:
-        if(star.mass == 100):
+        #if(star.mass == 100):
+            #tau_val = tau_fit_funcs[0](mx)
+        if(star.mass == 300):
             tau_val = tau_fit_funcs[0](mx)
-        elif(star.mass == 300):
-            tau_val = tau_fit_funcs[1](mx)
         elif(star.mass == 1000):
-            tau_val = tau_fit_funcs[2](mx)
+            tau_val = tau_fit_funcs[1](mx)
         else:
             tau_val = 1
     return tau_val
@@ -716,7 +715,6 @@ def upper_integrand_G(xi, mx, sigma, star):
     return xi**2 * nx_xi(mx, xi, star) * R_gould(mx, xi, sigma, star)
 
 def lower_integrand_G(xi, mx, sigma, star):
-    print(xi)
     return xi**2 * nx_xi(mx, xi, star)
 
 
@@ -729,40 +727,35 @@ def evap_coeff_G(mx, sigma, star):
 
 ###################################################################################
 
-result = evap_coeff_G(10**32, 10**-42, M300)
-print(result)
-##################################################################################
-#Figure Formatting
-fig = plt.figure(figsize = (12, 10))
-plt.style.use('fast')
-palette = plt.get_cmap('viridis')
-
-#~~~~~~~~ Stellar PARAMS ~~~~~~~~~~~~~~~~~
-
-#Stellar Data
-L = np.power(10,[6.8172, 7.3047])
-M = [300, 1000]
-R = np.power(10,[0.8697, 1.1090])
-
-
-#~~~~~~~~ DM PARAMS ~~~~~~~~~~~~~~~~~
-
-vbar = 10**6
-rho_chi_sigV = 10**14
-ann_type = 22 #3-->2 annihilations
-
-#Fraction of star's lifetime for equilibration
-frac_tau = 0.01
-
-#Using lower bounds on sigv throughout
-unitary = False
-thermal = True
-
 #Definition of DM mass ranges
-mchi_xenon = np.logspace(2.9, 15, 16)
-mchi_nf = np.logspace(2.9, 15, 16)
-mchi_pico = np.logspace(2.9, 15, 16)
-mchi = np.logspace(1, 15, 28)
+mchi = np.logspace(1, 3, 28)
+sigma = 10**(-40)
 
-#Orders of magnitude from 10^19 to get Densities
-rho_chi_adjust = [10**6, 10**3]
+E = []
+
+for i in range(0, len(stars_list)):
+
+    E.append([])
+
+    for j in range(0, len(mchi)):
+        E[i].append(evap_coeff_G(mchi[j], sigma, stars_list[i]))
+
+E.pop(-1)
+
+##################################################################################
+
+#Creating csv files
+
+mchi_300M_dat = np.asarray(mchi)
+E_300M_highmchi_dat = np.asarray(E[0])
+output = np.column_stack((mchi_300M_dat.flatten(), E_300M_highmchi_dat.flatten()))
+file = "mchi_E_300M.csv"
+np.savetxt(file,output,delimiter=',')
+
+mchi_1000M_dat = np.asarray(mchi)
+E_1000M_highmchi_dat = np.asarray(E[1])
+output = np.column_stack((mchi_1000M_dat.flatten(), E_1000M_highmchi_dat.flatten()))
+file = "mchi_E_300M.csv"
+np.savetxt(file,output,delimiter=',')
+
+###################################################################################

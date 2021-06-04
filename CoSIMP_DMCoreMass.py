@@ -648,7 +648,7 @@ def kappa_evap321(mx, sigma, star, rho_chi, vbar, E):
 ######################################################################################
 #Calculating Nchi
 
-def N_chi_func(mx, sigma, star, rho_chi, vbar, E):
+def N_chi_func_32(mx, sigma, star, rho_chi, vbar, E):
 
     tau_eq = tau_eq_321(mx, star, rho_chi, vbar, sigma, sigma_xenon = False)
     C_tot = capture_analytic(mx, star, rho_chi, vbar, sigma)
@@ -659,7 +659,148 @@ def N_chi_func(mx, sigma, star, rho_chi, vbar, E):
 
     return N_chi
 
-#######################################################################################
+############################################################################################################################################
+#Functions for WIMP DM
+
+
+#Constants Definition
+kb = 1.380649e-16 #Boltzmann constant in cgs Units (erg/K)
+G = 6.6743*10**(-8) # gravitational constant in cgs units
+hbar = 1.05e-27 #hbar in SI units
+c = 3e10 #Speed of light in SI units
+
+
+#Calculates effective radius of DM core --> SPERGEL: https://ui.adsabs.harvard.edu/abs/1985ApJ...294..663S/abstract
+def rx_Eff_SP(star, mx):
+    #T_central ~ 10^8 K
+    T = 10**8
+    
+    #Taking central density from polytropic prescription for consistency
+    rhoc = polytrope3_rhoc(star)
+    mx_g = mx * 1.783e-24 #Converting GeV/c^2 to g
+    
+    #Effective radius in cm
+    rx = np.sqrt(9 * kb * T * 1/(4*np.pi*G*rhoc*mx_g) ) 
+    
+    return rx
+
+#Effective volumes, analytic form --> SPERGEL: https://ui.adsabs.harvard.edu/abs/1985ApJ...294..663S/abstract
+def Vj_Eff_calcFunction_SP(R, j, rx):
+    #Vj in cm^3
+    Vj =  (2 * np.pi * rx**2 / ( (9) * (j**(3/2))) ) * (  ( -6 * np.exp(-3 * j * R**2 / (2*(rx**2))) * np.sqrt(j) * R)  + ( np.sqrt(6*np.pi) * rx * sc.erf(np.sqrt(3*j/2) * R/rx) )  )
+    
+    return Vj
+
+#Effective volumes, analytic form --> SPERGEL: https://ui.adsabs.harvard.edu/abs/1985ApJ...294..663S/abstract
+def Vj_Eff_SP(star, mx, j):
+    R = star.get_radius_cm() #converting R to cm 
+    rx = rx_Eff_SP(star, mx)
+    
+    #Vj in cm^3
+    Vj = Vj_Eff_calcFunction_SP(R, j, rx)
+    
+    return Vj
+
+#Lower bounds on sigmaV due to demand that equilibriation time is much less than the age of the star
+#For sigma, we have the choice of using the bounds we place OR the XENON1T bounds
+#Ann_type: 22 = 2-->2 annihilation
+#          32 = 3-->2 annihilation (3 DM --> 2 DM)
+#          321 = 3-->2 annihilation (2DM + SM --> SM + DM)
+def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma_xenon, Ann_type): #Using effective volumes
+    
+    #Determining which value to use for sigma
+    if (sigma_xenon == True):
+        sigma = 1.26*10**(-40)*(mx/10**8)
+    else:
+        #rho_adjust = 10**19/rho_chi
+        #sigma = sigma_mchi_pureH(star, mx, 10**19, vbar) * rho_adjust
+        sigma = sigma_xenon
+        
+    #Calculating the DM capture rate
+    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    
+    #Calculating effective volumes using SPERGEL method
+    V1 = Vj_Eff_SP(star, mx, 1)
+    V2 = Vj_Eff_SP(star, mx, 2)
+    V3 = Vj_Eff_SP(star, mx, 3)
+    
+    #Lower bound ddepends on form of annihilations
+    if (Ann_type == 22):
+        #Calculating lower bound in sigmaV for 2-->2 annihilations (See FREESE: arXiv:0802.1724v4)
+        Veff_22 = V1**2 * V2**-1
+        sigmav_lower = (frac_life * (star.lifetime)*31556952)**-2 * C**-1 * Veff_22 #Units of cm^3/s
+    elif(Ann_type == 32):
+        #Calculating lower bound in sigmaV for 3-->2 annihilations,(3 DM --> 2 DM)
+        Veff_32 = np.sqrt(V1**3/V3) # (See Exoplanet, Leane: arXiv:2010.00015)
+        sigmav_lower = (Veff_32**2 * C**-1 * (frac_life * (star.lifetime)*31556952)**-2) * ((5.06e13)**6 * (1.52e24)**-1) #Natural units: GeV^-5
+        
+    elif(Ann_type == 321):
+        #22 effective volumes
+        Veff_22 = V1**2 * V2**-1 # (See Exoplanet, Leane: arXiv:2010.00015)
+        
+        #Number density of SM particles in star
+        n_sm = polytrope3_rhoc(star)/1.6726e-24
+        
+        #Lower bound in sigmaV for 3-->2 annihilation (2DM + SM --> SM + DM)
+        sigmav_lower = (C**-1 * (frac_life * (star.lifetime)*31556952)**-2 * Veff_22 * n_sm**-1) * (5.06e13)**6 * (1.52e24)**-1 #Natural units: GeV^-5
+            
+    return sigmav_lower
+
+#Annihilation coefficient -- 2-->2
+def Ca_22(mx, star, rho_chi, vbar, sigma):
+    #sigv given by lower bounds
+    sigv = sigV_lowerBound(star, 0.01, mx, rho_chi, vbar, sigma, 22)
+    
+    #Defining top and bottom integrands using Fully polytropic approximation
+    def integrand_top_Ca(xi, mx, star):
+        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+    def integrand_bottom_Ca(xi, mx, star):
+        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+    
+    #Integrate over star
+    return quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+
+#Equilibration timescale -- 2-->2
+def tau_eq_22(mx, star, rho_chi, vbar, sigma_xenon = False):
+    #Switch for which sigma to use
+    if (sigma_xenon == True):
+        sigma = 1.26*10**(-40)*(mx/10**8)
+    else:
+        sigma = sigma_xenon
+        
+    #Calculating the DM capture rate
+    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    
+    #Annihlation coefficient
+    Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
+    
+    #Equilibration timescale
+    tau_eq = (C * Ca)**(-1/2)
+    
+    return tau_eq
+
+def kappa_evap22(mx, sigma, star, rho_chi, vbar, E):
+
+    tau_eq = tau_eq_22(mx, star, rho_chi, vbar, sigma)
+    
+    kap = (1 + (E*tau_eq/2)**2)**(1/2)
+    
+    return kap
+
+def N_chi_func_22(mx, sigma, star, rho_chi, vbar, E):
+
+    tau_eq = tau_eq_22(mx, star, rho_chi, vbar, sigma)
+    C_tot = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    C_a = Ca_22(mx, star, rho_chi, vbar, sigma)
+    k = kappa_evap22(mx, sigma, star, rho_chi, vbar, E)
+
+    N_chi = ((C_tot/C_a)**(1/2))*(1/(k + ((1/2)*E*tau_eq)))
+
+    return N_chi
+
+
+########################################################################################
+
 #Plotting Section
 
 #Figure Formatting
@@ -702,139 +843,237 @@ rho_chi_adjust = [10**6, 10**3]
 
 #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-E_dat = [E_300M_dat, E_1000M_dat]
+plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles\n")
 
-mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
-sigma = 10**-40
-N_chi = [ [ [],[] ],[ [],[] ] ]
-M_DM = [ [ [],[] ],[ [],[] ] ]
-        
+if plottype == 'low mchi':
 
-#Looping over all Stellar Masses
-for i in range(0, len(M)):
-
-    #Color formatting of plot
-    colors = palette(i/len(M))
-    area_color = list(colors)
-    area_color[3] = 0.2
-
-    for j in range(0, len(rho_chi_list)):
-
-        #Looping over all DM masses
-        for k in range(0, len(mchi_dat[i])):
-            N_chi[i][j].append(N_chi_func(mchi_dat[i][k], sigma, stars_list[i], rho_chi_list[j], vbar, E_dat[i][k]))
-            M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][k])
-
-            temp = M_DM[i][j][k]
-            M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
 
 
-        #Plotting 
-        plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+
+    E_dat = [E_300M_dat, E_1000M_dat]
+
+    mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
+    sigma = 10**-40
+    N_chi = [ [ [],[] ],[ [],[] ] ]
+    M_DM = [ [ [],[] ],[ [],[] ] ]
+            
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        for j in range(0, len(rho_chi_list)):
+
+            #Looping over all DM masses
+            for k in range(0, len(mchi_dat[i])):
+                N_chi[i][j].append(N_chi_func_32(mchi_dat[i][k], sigma, stars_list[i], rho_chi_list[j], vbar, E_dat[i][k]))
+                M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][k])
+
+                temp = M_DM[i][j][k]
+                M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
 
 
-    plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
+            #Plotting 
+            plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
 
 
-#~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-mchi_300M_dat = np.asarray(mchi_300M_dat)
-MDM_300M_dat = np.asarray(M_DM[0][0])
-output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-file = "mchi_MDM_300M_highsig.csv"
-np.savetxt(file,output,delimiter=',')
-
-mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-MDM_1000M_dat = np.asarray(M_DM[1][0])
-output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-file = "mchi_MDM_1000M_highsig.csv"
-np.savetxt(file,output,delimiter=',')
+        plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
 
 
-#~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-plt.yscale('log')
-plt.xscale('log')
-plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
-#plt.ylim(plt.ylim()[0], 10**-30)
-plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
-plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
-plt.legend(loc = 'best', ncol = 2)
-plt.savefig('CoSIMP_DM_Core_highersig.png', dpi = 200)
-#plt.show()
+    mchi_300M_dat = np.asarray(mchi_300M_dat)
+    MDM_300M_dat = np.asarray(M_DM[0][0])
+    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
+    file = "mchi_MDM_300M_highsig.csv"
+    np.savetxt(file,output,delimiter=',')
 
-
-######################################################################################################################################
-
-#Figure Formatting
-fig2 = plt.figure(figsize = (12, 10))
-plt.style.use('fast')
-palette = plt.get_cmap('viridis')
+    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
+    MDM_1000M_dat = np.asarray(M_DM[1][0])
+    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
+    file = "mchi_MDM_1000M_highsig.csv"
+    np.savetxt(file,output,delimiter=',')
 
 
-#~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-E_dat = [E_300M_dat, E_1000M_dat]
-
-mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
-sigma = 10**-46
-N_chi = [ [ [],[] ],[ [],[] ] ]
-M_DM = [ [ [],[] ],[ [],[] ] ]
-        
-
-#Looping over all Stellar Masses
-for i in range(0, len(M)):
-
-    #Color formatting of plot
-    colors = palette(i/len(M))
-    area_color = list(colors)
-    area_color[3] = 0.2
-
-    for j in range(0, len(rho_chi_list)):
-
-        #Looping over all DM masses
-        for k in range(0, len(mchi_dat[i])):
-            N_chi[i][j].append(N_chi_func(mchi_dat[i][k], sigma, stars_list[i], rho_chi_list[j], vbar, E_dat[i][k]))
-            M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][k])
-
-            temp = M_DM[i][j][k]
-            M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
+    #plt.ylim(plt.ylim()[0], 10**-30)
+    plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
+    plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('CoSIMP_DM_Core_highersig.png', dpi = 200)
+    #plt.show()
 
 
-        #Plotting 
-        plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+    ######################################################################################################################################
+
+    #Figure Formatting
+    fig2 = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
 
 
-    plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
+    #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    E_dat = [E_300M_dat, E_1000M_dat]
+
+    mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
+    sigma = 10**-46
+    N_chi = [ [ [],[] ],[ [],[] ] ]
+    M_DM = [ [ [],[] ],[ [],[] ] ]
+            
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        for j in range(0, len(rho_chi_list)):
+
+            #Looping over all DM masses
+            for k in range(0, len(mchi_dat[i])):
+                N_chi[i][j].append(N_chi_func_32(mchi_dat[i][k], sigma, stars_list[i], rho_chi_list[j], vbar, E_dat[i][k]))
+                M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][k])
+
+                temp = M_DM[i][j][k]
+                M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
 
 
-#~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-mchi_300M_dat = np.asarray(mchi_300M_dat)
-MDM_300M_dat = np.asarray(M_DM[0][0])
-output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-file = "mchi_MDM_300M_lowsig.csv"
-np.savetxt(file,output,delimiter=',')
-
-mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-MDM_1000M_dat = np.asarray(M_DM[1][0])
-output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-file = "mchi_MDM_1000M_lowsig.csv"
-np.savetxt(file,output,delimiter=',')
+            #Plotting 
+            plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
 
 
-#~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-plt.yscale('log')
-plt.xscale('log')
-plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
-#plt.ylim(plt.ylim()[0], 10**-30)
-plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
-plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-46}$ for CoSIMP DM')
-plt.legend(loc = 'best', ncol = 2)
-plt.savefig('CoSIMP_DM_Core_lowsig.png', dpi = 200)
-plt.show()
+        plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
 
 
+    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    mchi_300M_dat = np.asarray(mchi_300M_dat)
+    MDM_300M_dat = np.asarray(M_DM[0][0])
+    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
+    file = "mchi_MDM_300M_lowsig.csv"
+    np.savetxt(file,output,delimiter=',')
+
+    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
+    MDM_1000M_dat = np.asarray(M_DM[1][0])
+    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
+    file = "mchi_MDM_1000M_lowsig.csv"
+    np.savetxt(file,output,delimiter=',')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
+    #plt.ylim(plt.ylim()[0], 10**-30)
+    plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
+    plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-46}$ for CoSIMP DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('CoSIMP_DM_Core_lowsig.png', dpi = 200)
+    plt.show()
+
+
+
+elif plottype == 'high mchi':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+
+
+    mchi_dat = np.logspace(1, 15, 28)
+
+    E = 0
+    
+    sigma = 10**-40
+    N_chi = [ [ [],[] ],[ [],[] ] ]
+    M_DM = [ [ [],[] ],[ [],[] ] ]
+            
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        for j in range(0, len(rho_chi_list)):
+
+            #Looping over all DM masses
+            for k in range(0, len(mchi_dat)):
+
+                if mchi_dat[k] < 10**6:
+                    N_chi[i][j].append(N_chi_func_22(mchi_dat[k], sigma, stars_list[i], rho_chi_list[j], vbar, E))
+                    M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[k])
+
+                    temp = M_DM[i][j][k]
+                    M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+
+                else:
+                    sigma = sigma_mchi_pureH(stars_list[i], mchi_dat[k], 10**19, vbar) * rho_chi_adjust[j]
+                    
+                    N_chi[i][j].append(N_chi_func_22(mchi_dat[k], sigma, stars_list[i], rho_chi_list[j], vbar, E))
+                    M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[k])
+
+                    temp = M_DM[i][j][k]
+                    M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+
+
+            #Plotting 
+            plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+
+
+        plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
+
+
+    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    mchi_300M_dat = np.asarray(mchi_300M_dat)
+    MDM_300M_dat = np.asarray(M_DM[0][0])
+    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
+    file = "highmchi_MDM_300M.csv"
+    np.savetxt(file,output,delimiter=',')
+
+    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
+    MDM_1000M_dat = np.asarray(M_DM[1][0])
+    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
+    file = "highmchi_MDM_1000M.csv"
+    np.savetxt(file,output,delimiter=',')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
+    #plt.ylim(plt.ylim()[0], 10**-30)
+    plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
+    plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('CoSIMP_DM_Core_highermchi.png', dpi = 200)
+    #plt.show()
+
+else:
+
+    print("Enter a valid plot type\n")
