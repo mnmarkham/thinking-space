@@ -586,15 +586,15 @@ def Ca_321(mx, star):
     return quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
 
 #Equilibration timescale -- 2DM + 1SM interactions
-def tau_eq_321(mx, star, rho_chi, vbar, sigma, sigma_xenon = False):
+def tau_eq_321(mx, star, rho_chi, vbar, sigma_xenon = False):
     #Switch for which sigma to use
-##    if (sigma_xenon == True):
-##        sigma = 1.26*10**(-40)*(mx/10**8)
-##    else:
-##        sigma = sigma_xenon
+    if (sigma_xenon == True):
+        sigma = 1.26*10**(-40)*(mx/10**8)
+    else:
+        sigma = sigma_xenon
 
     #Calculating the DM capture rate
-    C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
 
 
     #Annihlation coefficient
@@ -624,6 +624,42 @@ with open('E_1000M_Madison.csv') as csv_file:
     for row in csv_reader:
         mchi_1000M_dat.append(float(row[0]))
         E_1000M_dat.append(float(row[1]))
+
+
+#Approximate DM Evaporation rate
+def evap_coeff_Ilie_approx2(mx, sigma, star):
+    #Central proton number density (cm^-3)
+    nc = polytrope3_rhoc(star)*0.75/1.6726e-24
+    
+    #Edge of star in xis
+    xi1 = xis[-1]
+
+    #Central proton speed (Normalized to vesc)
+    uc = proton_speed(xis[0], star)
+    
+    vesc = 1
+    vesc_val = star.get_vesc_surf()
+
+    #Dimensionless QTYs
+    tau = tau_fit(mx, star)#Normalized DM Temperature
+    mu = mx/0.93827 #Normalized DM mass
+    
+    #Analytic form of the DM evaporation rate
+    E = 9/np.sqrt(np.pi) * 1/(xi1**3) * sigma * nc * uc *vesc_val * np.exp(-1/uc**2 * mu/tau * (1 + xi1/2)) * star.get_vol()/Vj_Eff_SP(star,mx , 1)
+    
+    return E
+
+#l(r), most probable dimensionless velocity of protons at specific point in star
+def proton_speed(xi, star):
+    kb = 1.380649e-16 #Boltzmann constant in cgs Units (erg/K)
+    Tc = 10**8 #Central star temperature taken to be ~ 10^8 K
+
+    u = np.sqrt(2*kb*Tc*theta(xi)/1.6726219e-24) #cm/s (cgs units)
+    
+    l = u/star.get_vesc_surf()
+    
+    return l
+
 
 ######################################################################################
 #Calculating kappa
@@ -706,18 +742,18 @@ def Vj_Eff_SP(star, mx, j):
 #Ann_type: 22 = 2-->2 annihilation
 #          32 = 3-->2 annihilation (3 DM --> 2 DM)
 #          321 = 3-->2 annihilation (2DM + SM --> SM + DM)
-def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma_xenon, Ann_type): #Using effective volumes
+def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using effective volumes
 
     #Determining which value to use for sigma
-    if (sigma_xenon == True):
-        sigma = 1.26*10**(-40)*(mx/10**8)
-    else:
-        #rho_adjust = 10**19/rho_chi
-        #sigma = sigma_mchi_pureH(star, mx, 10**19, vbar) * rho_adjust
-        sigma = sigma_xenon
+##    if (sigma_xenon == True):
+##        sigma = 1.26*10**(-40)*(mx/10**8)
+##    else:
+##        #rho_adjust = 10**19/rho_chi
+##        #sigma = sigma_mchi_pureH(star, mx, 10**19, vbar) * rho_adjust
+##        sigma = sigma_xenon
 
     #Calculating the DM capture rate
-    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
 
     #Calculating effective volumes using SPERGEL method
     V1 = Vj_Eff_SP(star, mx, 1)
@@ -757,19 +793,26 @@ def Ca_22(mx, star, rho_chi, vbar, sigma):
     def integrand_bottom_Ca(xi, mx, star):
         return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
 
+    print(integrand_top_Ca(xis[-1], mx, star))
+    print(integrand_bottom_Ca(xis[-1], mx, star))
+
+    Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+
+    print("Ca: " + str(Ca))
+
     #Integrate over star
-    return quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+    return Ca
 
 #Equilibration timescale -- 2-->2
-def tau_eq_22(mx, star, rho_chi, vbar, sigma_xenon = False):
+def tau_eq_22(mx, star, rho_chi, vbar, sigma):
     #Switch for which sigma to use
-    if (sigma_xenon == True):
-        sigma = 1.26*10**(-40)*(mx/10**8)
-    else:
-        sigma = sigma_xenon
+##    if (sigma_xenon == True):
+##        sigma = 1.26*10**(-40)*(mx/10**8)
+##    else:
+##        sigma = sigma_xenon
 
     #Calculating the DM capture rate
-    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
 
     #Annihlation coefficient
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
@@ -790,7 +833,7 @@ def kappa_evap22(mx, sigma, star, rho_chi, vbar, E):
 def N_chi_func_22(mx, sigma, star, rho_chi, vbar, E):
 
     tau_eq = tau_eq_22(mx, star, rho_chi, vbar, sigma)
-    C_tot = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    C_tot = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
     C_a = Ca_22(mx, star, rho_chi, vbar, sigma)
     k = kappa_evap22(mx, sigma, star, rho_chi, vbar, E)
 
@@ -815,7 +858,7 @@ R = np.power(10,[0.8697, 1.1090])
 
 vbar = 10**6
 rho_chi_sigV = 10**14
-ann_type = 22 #3-->2 annihilations
+ann_type = 22 #2-->2 annihilations
 
 rho_chi_list = [10**13, 10**16]
 
@@ -827,18 +870,13 @@ frac_tau = 0.01
 unitary = False
 thermal = True
 
-#Definition of DM mass ranges
-mchi_xenon = np.logspace(2.9, 15, 16)
-mchi_nf = np.logspace(2.9, 15, 16)
-mchi_pico = np.logspace(2.9, 15, 16)
-mchi = np.logspace(1, 15, 28)
 
 #Orders of magnitude from 10^19 to get Densities
 rho_chi_adjust = [10**6, 10**3]
 
 #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles.\nEnter 'sigma' for sigma vs. DM core.\n\n")
+plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles.\nEnter 'sigma' for sigma vs. DM core.\nEnter 'E-tau mchi' for E*tau vs. mchi.\nEnter 'E-tau sigma' for E*tau vs. sigma.\n\n")
 
 if plottype == 'low mchi':
 
@@ -909,7 +947,7 @@ if plottype == 'low mchi':
     plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
     plt.legend(loc = 'best', ncol = 2)
     plt.savefig('CoSIMP_DM_Core_highersig.png', dpi = 200)
-    #plt.show()
+    
 
 
     ######################################################################################################################################
@@ -995,7 +1033,7 @@ elif plottype == 'high mchi':
 
 
 
-    mchi_dat = np.logspace(1, 15, 28)
+    mchi_dat = np.logspace(0, 15, 28)
 
     E = 0
 
@@ -1017,7 +1055,7 @@ elif plottype == 'high mchi':
             #Looping over all DM masses
             for k in range(0, len(mchi_dat)):
 
-                if mchi_dat[k] < 10**6:
+                if mchi_dat[k] <= 10**6:
                     N_chi[i][j].append(N_chi_func_22(mchi_dat[k], sigma, stars_list[i], rho_chi_list[j], vbar, E))
                     M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[k])
 
@@ -1081,7 +1119,7 @@ elif plottype == 'sigma':
     E_dat = [E_300M_dat, E_1000M_dat]
 
     mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
-    sigma = np.logspace(-50, -40, 16)
+    sigma = np.logspace(-50, -30, 16)
     N_chi = [ [ [],[] ],[ [],[] ] ]
     M_DM = [ [ [],[] ],[ [],[] ] ]
 
@@ -1127,7 +1165,7 @@ elif plottype == 'sigma':
 
     slope, intercept = np.polyfit(np.log(sigma), np.log(M_DM[0][0]), 1)
     print("slope of plot #1: " + str(slope))
-    
+
 
     #~~~~~~~~~~~~~~~~~ PLOT 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1191,7 +1229,6 @@ elif plottype == 'sigma':
     plt.style.use('fast')
     palette = plt.get_cmap('viridis')
 
-
     N_chi = [ [ [],[] ],[ [],[] ] ]
     M_DM = [ [ [],[] ],[ [],[] ] ]
 
@@ -1208,8 +1245,8 @@ elif plottype == 'sigma':
 
             #Looping over all DM masses
             for k in range(0, len(sigma)):
-                N_chi[i][j].append(N_chi_func_32(mchi_dat[i][990], sigma[k], stars_list[i], rho_chi_list[j], vbar, E_dat[i][990]))
-                M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[i][990])
+                N_chi[i][j].append(N_chi_func_22(10**4, sigma[k], stars_list[i], rho_chi_list[j], vbar, 0))
+                M_DM[i][j].append(N_chi[i][j][k]*(10**4))
 
                 temp = M_DM[i][j][k]
                 M_DM[i][j][k] = temp * 1.78*10**-24 * 5.028*10**-34
@@ -1230,7 +1267,7 @@ elif plottype == 'sigma':
     plt.xlim(sigma[0], sigma[-1])
     #plt.ylim(plt.ylim()[0], 10**-30)
     plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
-    plt.title('Relationship between $M_{DM}$ and $\sigma$ at $m_\chi$ = $10^{1}$ GeV')
+    plt.title('Relationship between $M_{DM}$ and $\sigma$ at $m_\chi$ = $10^{4}$ GeV')
     plt.legend(loc = 'best', ncol = 2)
     plt.savefig('Sigma_DM_Core_highmchi.png', dpi = 200)
 
@@ -1244,11 +1281,150 @@ elif plottype == 'sigma':
 #####################################################################################################################
 #
 #       CHECKING THE SLOPES OF EACH PLOT RETURNED THE FOLLOWING VALUES:
-#       PLOT #1 -- 0.49999999999999917
-#       PLOT #2 -- 0.4999999999999997
-#       PLOT #3 -- 0.4999999999999996
+#       MCHI = 10**-4 --> 0.49999999999999917
+#       MCHI = 10**-1 --> 0.4999999999999997
+#       MCHI = 10**1 --> 0.4999999999999996
+#       MCHI = 10**2 --> 0.4999999999999994
+#~~~~~~~NOW USING 2-2 ANNIHILATION FUNCS INSTEAD OF 3-2~~~~~~~~~~~~~~~~~
+#       MCHI = 10**2 --> 0.9999996820910341
+#       MCHI = 10**3 --> 1.0057273626184633
+#       MCHI = 10**4 --> 1.0433757222635602
+#       MCHI = 10**5 --> 0.999999686205272
 #
 #####################################################################################################################
+
+elif plottype == 'E-tau mchi':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    E_dat = [E_300M_dat, E_1000M_dat]
+    mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
+    mchi = np.logspace(-4, -1, 100)
+    sigma = 10**-40
+
+    tau = [[],[]]
+    Etau = [[],[]]
+    Etau_approx = [[],[]]
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        #Looping over all DM masses
+        for k in range(0, len(mchi)):
+            tau[i].append(tau_eq_321(mchi[k], stars_list[i], 10**14, vbar, sigma))
+            #Etau[i].append(E_dat[i][k]*tau[i][k])
+            Etau_approx[i].append(evap_coeff_Ilie_approx2(mchi[k], sigma, stars_list[i]) * tau[i][k])
+
+
+        #Plotting
+        plt.plot(mchi, Etau_approx[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+
+        #slope, intercept = np.polyfit(np.log(mchi), np.log(Etau_approx[i]), 1)
+        #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$E \\times \\tau_{eq}$', fontsize = 15)
+    plt.title('Relationship between $E \\times \\tau_{eq}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('E_Tau_Scaling.png', dpi = 200)
+    plt.show()
+
+########################################################################################################
+#
+#       SLOPE OF FIRST HALF OF E-TAU CURVE:
+#       300M --> 1.0735916009716324
+#       1000M --> 1.097305752510655
+#
+########################################################################################################
+
+
+elif plottype == 'E-tau sigma':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    E_dat = [E_300M_dat, E_1000M_dat]
+    mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
+    mchi = 10**-2
+    sigma = np.logspace(-50, -30, 60)
+
+    tau = [[],[]]
+    Etau = [[],[]]
+    Etau_approx = [[],[]]
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        #Looping over all DM masses
+        for k in range(0, len(sigma)):
+            tau[i].append(tau_eq_321(mchi, stars_list[i], 10**14, vbar, sigma[k]))
+            #Etau[i].append(E_dat[i][k]*tau[i][k])
+            Etau_approx[i].append(evap_coeff_Ilie_approx2(mchi, sigma[k], stars_list[i]) * tau[i][k])
+
+
+        #Plotting
+        plt.plot(sigma, Etau_approx[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+
+        #slope, intercept = np.polyfit(np.log(sigma), np.log(Etau_approx[i]), 1)
+        #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$\sigma$ $[cm^{2}]$', fontsize = 15)
+    plt.xlim(sigma[0], sigma[-1])
+    plt.ylabel('$E \\times \\tau_{eq}$', fontsize = 15)
+    plt.title('Relationship between $E \\times \\tau_{eq}$ and $\sigma$ with $m_\chi = 10^{-2}$')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('E_Tau_Scaling_Sigma.png', dpi = 200)
+    plt.show()
+
+
+########################################################################################################
+#
+#       SLOPE WHILE IN CAPTURE REGION III:
+#       300M --> 0.5000001087893576
+#       1000M --> 0.5000001204661548
+#
+#       SLOPE WHILE IN CAPTURE REGION II:
+#       300M --> 1.0004718080571477
+#       1000M --> 1.000574002416353
+#
+########################################################################################################
+
 
 else:
 

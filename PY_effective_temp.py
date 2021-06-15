@@ -102,6 +102,13 @@ sb_const = 5.6704*10**(-8) * 1000
 
 ####################################################################################
 def T_effective(star):
+    L = star.get_Lnuc_cgs()
+    r2 = star.get_radius_cm()**2
+
+    T_eff = (L / (4*np.pi*r2*sb_const))**(1/4)
+    return T_eff
+
+def T_effective_DM(star):
     L = star.get_Eddington_lum_cgs()
     r2 = star.get_radius_cm()**2
 
@@ -112,15 +119,23 @@ def T_effective(star):
 
 M = []
 L_edd = []
+L_nuc = []
 T_eff = []
+T_eff_DM = []
+TT = []
 
 
 for star in stars_list:
 
-
     M.append(star.mass)
     L_edd.append(star.get_Eddington_lum_cgs())
+    L_nuc.append(star.get_Lnuc_cgs())
     T_eff.append(T_effective(star))
+    T_eff_DM.append(T_effective_DM(star))
+
+for i in range(0, len(T_eff)):
+
+    TT.append(T_eff[i] / T_eff_DM[i])
 
 
 #~~~~~~~~~~~~~~~ mass vs. T_Eff ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -131,7 +146,7 @@ plt.style.use('fast')
 palette = plt.get_cmap('viridis')
 
 
-plt.plot(M, T_eff)
+plt.plot(M, T_eff_DM)
 
 plt.xlim(M[0], M[-1])
 plt.xlabel('$M_{\star}$ [$M_{\odot}$]', fontsize = 15)
@@ -148,12 +163,33 @@ palette = plt.get_cmap('viridis')
 
 
 
-plt.plot(L_edd, T_eff)
+plt.plot(L_edd, T_eff_DM)
 
 plt.xlim(L_edd[0], L_edd[-1])
 plt.xlabel('$L_{EDD}$ [$erg s^{-1}$]', fontsize = 15)
 plt.ylabel('$T_{E}$ [K]', fontsize = 15)
 plt.title('Relationship between $L_{EDD}$ and $T_{E}$ for Pop III stars, varying $M_{\star}$')
 plt.savefig('Leddington_Teffective.png', dpi = 200)
+
+
+#~~~~~~~~~~~~~~~~~~~~ mass vs. T_Eff/T_Eff (DM) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#Figure Formatting
+fig3 = plt.figure(figsize = (12, 10))
+plt.style.use('fast')
+palette = plt.get_cmap('viridis')
+
+
+
+plt.plot(M, TT, 'b.')
+
+plt.yscale('log')
+plt.xscale('log')
+plt.xlim(M[0], M[-1])
+plt.xlabel('$M_{\star}$ [$M_{\odot}$]', fontsize = 15)
+plt.ylabel('$T_{E} / T^{DM}_{E}$ [K]', fontsize = 15)
+plt.title('Relationship between $M_{\star}$ and $T_{E} / T^{DM}_{E}$ for Pop III stars, varying $M_{\star}$')
+plt.savefig('Teffective_Ratio.png', dpi = 200)
+
 
 plt.show()
