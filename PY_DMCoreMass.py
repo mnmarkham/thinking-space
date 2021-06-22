@@ -595,6 +595,7 @@ def tau_eq_321(mx, star, rho_chi, vbar, sigma_xenon = False):
 
     #Calculating the DM capture rate
     C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    #C = float(capture_analytic(mx, star, rho_chi, vbar, sigma))
 
 
     #Annihlation coefficient
@@ -793,12 +794,12 @@ def Ca_22(mx, star, rho_chi, vbar, sigma):
     def integrand_bottom_Ca(xi, mx, star):
         return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
 
-    print(integrand_top_Ca(xis[-1], mx, star))
-    print(integrand_bottom_Ca(xis[-1], mx, star))
+    #print(integrand_top_Ca(xis[-1], mx, star))
+    #print(integrand_bottom_Ca(xis[-1], mx, star))
 
     Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
 
-    print("Ca: " + str(Ca))
+    #print("Ca: " + str(Ca))
 
     #Integrate over star
     return Ca
@@ -841,6 +842,21 @@ def N_chi_func_22(mx, sigma, star, rho_chi, vbar, E):
 
     return N_chi
 
+################################################################################################################
+#Effective Volume Section
+
+#Defining integrand for effective volumes
+def integrand_Vj_poly3(xi, j, mx, star):
+    return xi**2 * (nx_xi(mx, xi, star))**j
+
+#Numerically integrating to get effective volumes for polytropes
+def Vj_poly3(j, mx, star):
+    xi_1 = xis[-1]
+    factor = 4*np.pi*(star.get_radius_cm()/xi_1)**3 #Outside integral factor
+    int_val = quad(integrand_Vj_poly3, 0, xi_1, args=(j, mx, star)) #Integrate nx/nc * xi**2 over star
+    Vj = factor * int_val[0] #cm^3
+    return Vj
+
 
 ########################################################################################
 
@@ -876,7 +892,10 @@ rho_chi_adjust = [10**6, 10**3]
 
 #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles.\nEnter 'sigma' for sigma vs. DM core.\nEnter 'E-tau mchi' for E*tau vs. mchi.\nEnter 'E-tau sigma' for E*tau vs. sigma.\n\n")
+plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles.\nEnter 'sigma' for sigma vs. DM core.\n" +
+                 "Enter 'E-tau mchi' for E*tau vs. mchi.\nEnter 'E-tau sigma' for E*tau vs. sigma.\nEnter 'Ca' for Ca vs. sigma.\n" +
+                 "Enter 'Vj' to play around with effective volume.\nEnter 'nchi' for a normalized profile of captured DM.\n" +
+                 "Enter 'rchi' to examine the effective radius.\n\n")
 
 if plottype == 'low mchi':
 
@@ -1422,6 +1441,265 @@ elif plottype == 'E-tau sigma':
 #       SLOPE WHILE IN CAPTURE REGION II:
 #       300M --> 1.0004718080571477
 #       1000M --> 1.000574002416353
+#
+########################################################################################################
+
+
+elif plottype == 'Ca':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    E_dat = [E_300M_dat, E_1000M_dat]
+    mchi_dat = [mchi_300M_dat, mchi_1000M_dat]
+    mchi = 10**-2
+    sigma = np.logspace(-50, -30, 60)
+
+    Ca32 = [[],[]]
+    Ca22 = [[],[]]
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        #Looping over all DM masses
+        for k in range(0, len(sigma)):
+            Ca32[i].append(Ca_321(mchi, stars_list[i]))
+            Ca22[i].append(Ca_22(10**3, stars_list[i], 10**14, vbar, sigma[k]))
+
+
+        #Plotting
+        plt.plot(sigma, Ca32[i], color = area_color, ls = ':', label = str(M[i]) + ' $M_{\odot}$, 3-2 Annihilations')
+        plt.plot(sigma, Ca22[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$, 2-2 Annihilations')
+
+        #slope, intercept = np.polyfit(np.log(sigma), np.log(Etau_approx[i]), 1)
+        #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$\sigma$ $[cm^{2}]$', fontsize = 15)
+    plt.xlim(sigma[0], sigma[-1])
+    plt.ylabel('$C_{A}$', fontsize = 15)
+    plt.title('Relationship between $C_{A}$ and $\sigma$ with $m_\chi = 10^{-2}$ for 3-2 and $m_\chi = 10^{3}$ for 2-2 Annihilations')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('E_Tau_Scaling_Sigma.png', dpi = 200)
+    plt.show()
+
+
+########################################################################################################
+#
+#       SLOPE WHILE IN CAPTURE REGION III:
+#       300M --> 0.5000001087893576
+#       1000M --> 0.5000001204661548
+#
+#       SLOPE WHILE IN CAPTURE REGION II:
+#       300M --> 1.0004718080571477
+#       1000M --> 1.000574002416353
+#
+########################################################################################################
+
+
+elif plottype == 'Vj':
+
+    print(Vj_poly3(1, 10**-2, M1000))
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('cividis')
+
+
+
+    mchi = np.logspace(-4, 5, 60)
+    G = 6.6743*10**(-8)
+    j = 1
+
+    Vj_approx = [[],[]]
+    Vj_approx2 = [[],[]]
+    Vj = [[],[]]
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+
+
+        #Looping over all DM masses
+        for k in range(0, len(mchi)):
+
+            rchi = ((9*kb*tau_fit(mchi[k], stars_list[i])*10**8)/(4*np.pi*G*stars_list[i].core_density*mchi[k]*1.78*10**-24))**(1/2)
+            series_approx = (4/3)*np.pi*(stars_list[i].get_radius_cm()**3)
+            series_approx2 = (2*((2/3)**(1/2))*(np.pi**(3/2))*rchi**3)/(3*(j**(3/2))) #+ np.exp((-3*j*stars_list[i].get_radius_cm()**2)/(2*rchi**2) + (rchi**2/stars_list[i].get_radius_cm()**2))*((-4*np.pi*rchi**4)/(9*j**2*stars_list[i].get_radius_cm()) + (rchi**2/stars_list[i].get_radius_cm()**2)) 
+            
+            Vj_approx[i].append(series_approx)
+            Vj_approx2[i].append(series_approx2)
+            Vj[i].append(Vj_poly3(1, mchi[k], stars_list[i]))
+
+
+        #Plotting
+        plt.plot(mchi, Vj_approx[i], color = area_color, ls = ':', label = str(M[i]) + ' $M_{\odot}$, Series Approximation as rx -> infintity')
+        plt.plot(mchi, Vj_approx2[i], color = area_color, ls = '--', label = str(M[i]) + ' $M_{\odot}$, Series Approximation as Rstar -> infinity')
+        plt.plot(mchi, Vj[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$, Polytrope Function')
+
+
+        #slope, intercept = np.polyfit(np.log(mchi), np.log(Vj[i]), 1)
+        #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$V_{j}$ $[cm^{3}]$', fontsize = 15)
+    plt.title('Relationship between $V_{j}$ and $m_\chi$ (Series Approximation vs. Full Analytic Approximation)')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('Vj_Scaling.png', dpi = 200)
+    plt.show()
+
+
+########################################################################################################
+#
+#       SLOPE FOR MCHI BETWEEN 10^0 AND 10^4 GEV:
+#       300M --> -1.495901738651299
+#       1000M --> -1.5165819097526443
+#
+########################################################################################################
+
+
+elif plottype == 'nchi':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('inferno')
+
+
+
+    mchi = [10**-4, 10**-2, 10**0]
+
+    nchi = [[], [], []]
+
+
+
+    #Looping over mchi mass
+    for i in range(0, len(mchi)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(mchi))
+        area_color = list(colors)
+
+
+        #Looping over all xis
+        for k in range(0, len(xis)):
+
+            nchi[i].append(nx_xi(mchi[i], xis[k], M1000))
+
+
+        #Plotting
+        plt.plot(xis, nchi[i], color = area_color, label = '$m_\chi$ = ' + str(mchi[i]))
+
+
+        #slope, intercept = np.polyfit(np.log(mchi), np.log(Vj[i]), 1)
+        #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('linear')
+    plt.xscale('linear')
+    plt.xlabel('$\\xi$', fontsize = 15)
+    plt.xlim(xis[0], xis[-1])
+    plt.ylabel('$n_\chi(\\xi)$/$n_{c}$ ', fontsize = 15)
+    plt.title('Normalized Profile of Captured DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('normalized_profile.png', dpi = 200)
+    plt.show()
+
+
+elif plottype == 'rchi':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+    G = 6.6743*10**(-8)
+    mchi = np.logspace(-4, 5, 60)
+
+    rchi = [[], []]
+
+
+
+    #Looping over star mass
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+
+
+        #Looping over mchi mass
+        for k in range(0, len(mchi)):
+
+
+            rx = ((9*kb*tau_fit(mchi[k], stars_list[i])*10**8)/(4*np.pi*G*stars_list[i].core_density*mchi[k]*1.78*10**-24))**(1/2)
+
+            rchi[i].append(rx)
+
+
+        #Plotting
+        plt.plot(mchi, rchi[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+
+
+        slope, intercept = np.polyfit(np.log(mchi), np.log(rchi[i]), 1)
+        print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$r_\chi$ [cm]', fontsize = 15)
+    plt.title('Effective Radius of DM')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('effective_radius_profile.png', dpi = 200)
+    plt.show()
+
+
+########################################################################################################
+#
+#       SLOPE:
+#       300M --> -0.4835306220542688
+#       1000M --> -0.48436523903717144
 #
 ########################################################################################################
 
