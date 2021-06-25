@@ -10,6 +10,7 @@ from scipy.integrate import quad
 from scipy.optimize import fsolve
 from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
+from scipy.integrate import solve_ivp
 
 #Plotting Library
 import matplotlib.pyplot as plt
@@ -754,14 +755,15 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using
 ##        sigma = sigma_xenon
 
     #Calculating the DM capture rate
-    C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    #C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
 
     #Calculating effective volumes using SPERGEL method
     V1 = Vj_Eff_SP(star, mx, 1)
     V2 = Vj_Eff_SP(star, mx, 2)
     V3 = Vj_Eff_SP(star, mx, 3)
 
-    #Lower bound ddepends on form of annihilations
+    #Lower bound depends on form of annihilations
     if (Ann_type == 22):
         #Calculating lower bound in sigmaV for 2-->2 annihilations (See FREESE: arXiv:0802.1724v4)
         Veff_22 = V1**2 * V2**-1
@@ -786,18 +788,27 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using
 #Annihilation coefficient -- 2-->2
 def Ca_22(mx, star, rho_chi, vbar, sigma):
     #sigv given by lower bounds
-    sigv = sigV_lowerBound(star, 0.01, mx, rho_chi, vbar, sigma, 22)
+    #sigv = sigV_lowerBound(star, 0.01, mx, rho_chi, vbar, sigma, 22)
+    sigv = 3*10**-26
+
+    radius = star.get_radius_cm()
+    thermal_radius = ((9*kb*star.core_temp)/(8*G*np.pi*star.core_density*mx*1.78*10**-24))**(1/2)
+    print(thermal_radius)
+    
 
     #Defining top and bottom integrands using Fully polytropic approximation
     def integrand_top_Ca(xi, mx, star):
-        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+        return 4*np.pi*(thermal_radius/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+
     def integrand_bottom_Ca(xi, mx, star):
-        return 4*np.pi*(star.get_radius_cm()/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+        return (4*np.pi*(thermal_radius/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star))**2
 
     #print(integrand_top_Ca(xis[-1], mx, star))
     #print(integrand_bottom_Ca(xis[-1], mx, star))
 
-    Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0]**2
+    #make plots of integrand vs. radius
+
+    Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/(quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0])
 
     #print("Ca: " + str(Ca))
 
@@ -813,7 +824,8 @@ def tau_eq_22(mx, star, rho_chi, vbar, sigma):
 ##        sigma = sigma_xenon
 
     #Calculating the DM capture rate
-    C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
+    #C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
 
     #Annihlation coefficient
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
@@ -834,11 +846,12 @@ def kappa_evap22(mx, sigma, star, rho_chi, vbar, E):
 def N_chi_func_22(mx, sigma, star, rho_chi, vbar, E):
 
     tau_eq = tau_eq_22(mx, star, rho_chi, vbar, sigma)
+    #C_tot = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
     C_tot = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
     C_a = Ca_22(mx, star, rho_chi, vbar, sigma)
     k = kappa_evap22(mx, sigma, star, rho_chi, vbar, E)
 
-    N_chi = ((C_tot/C_a)**(1/2))*(1/(k + ((1/2)*E*tau_eq)))
+    N_chi = ((C_tot/C_a)**(1/2))#*(1/(k + ((1/2)*E*tau_eq)))
 
     return N_chi
 
@@ -857,6 +870,25 @@ def Vj_poly3(j, mx, star):
     Vj = factor * int_val[0] #cm^3
     return Vj
 
+#################################################################################################################
+#Calculates total number of DM particles in the star at a given time, t
+def Nx_t_diff(mx, rhox, vbar, sigma, star, t_1):
+
+    #relevant paramters
+    Ctot = capture_analytic(mx, star, rhox, vbar, sigma) #s^-1
+    Ca = Ca_22(mx, star, rhox, vbar, sigma) #s^-1
+    #E = evap_coeff_Ilie_approx2(mx, sigma, star)
+    
+    #Differential equation function
+    dNxdt = lambda t, Nx, Ctot = Ctot, Ca = Ca: Ctot - Ca*Nx**3
+    
+    #Nx(t)
+    sol = solve_ivp(dNxdt, (0, t_1), [0], t_eval = [t_1])
+    
+    #Nx_t1 = # Of DM particles at t1
+    Nx_t1 = sol.y[0][0]
+    
+    return Nx_t1
 
 ########################################################################################
 
@@ -1051,8 +1083,7 @@ elif plottype == 'high mchi':
     palette = plt.get_cmap('viridis')
 
 
-
-    mchi_dat = np.logspace(0, 15, 28)
+    mchi_dat = np.logspace(1, 5, 28)
 
     E = 0
 
@@ -1076,6 +1107,7 @@ elif plottype == 'high mchi':
 
                 if mchi_dat[k] <= 10**6:
                     N_chi[i][j].append(N_chi_func_22(mchi_dat[k], sigma, stars_list[i], rho_chi_list[j], vbar, E))
+                    #N_chi[i][j].append(Nx_t_diff(mchi_dat[k], rho_chi_list[j], vbar, sigma, star, 10**6))
                     M_DM[i][j].append(N_chi[i][j][k]*mchi_dat[k])
 
                     temp = M_DM[i][j][k]
@@ -1092,25 +1124,28 @@ elif plottype == 'high mchi':
 
 
             #Plotting
-            plt.plot(mchi_dat[i], M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
+            plt.plot(mchi_dat, M_DM[i][j], color = area_color, label = str(M[i]) + ' $M_{\odot}$')
 
 
-        plt.fill_between(mchi_dat[i], M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
+        plt.fill_between(mchi_dat, M_DM[i][0], M_DM[i][1], color = area_color, label = 'Constraint Band, $\\rho_\chi = 10^{13} - 10^{16}$')
+
+        slope, intercept = np.polyfit(np.log(mchi_dat), np.log(M_DM[i][1]), 1)
+        print("slope: " + str(slope))
 
 
     #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    mchi_300M_dat = np.asarray(mchi_300M_dat)
-    MDM_300M_dat = np.asarray(M_DM[0][0])
-    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-    file = "highmchi_MDM_300M.csv"
-    np.savetxt(file,output,delimiter=',')
-
-    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-    MDM_1000M_dat = np.asarray(M_DM[1][0])
-    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-    file = "highmchi_MDM_1000M.csv"
-    np.savetxt(file,output,delimiter=',')
+##    mchi_300M_dat = np.asarray(mchi_300M_dat)
+##    MDM_300M_dat = np.asarray(M_DM[0][0])
+##    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
+##    file = "highmchi_MDM_300M.csv"
+##    np.savetxt(file,output,delimiter=',')
+##
+##    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
+##    MDM_1000M_dat = np.asarray(M_DM[1][0])
+##    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
+##    file = "highmchi_MDM_1000M.csv"
+##    np.savetxt(file,output,delimiter=',')
 
 
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1118,13 +1153,14 @@ elif plottype == 'high mchi':
     plt.yscale('log')
     plt.xscale('log')
     plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-    plt.xlim(mchi_dat[1][0], mchi_dat[1][-1])
+    plt.xlim(mchi_dat[0], mchi_dat[-1])
     #plt.ylim(plt.ylim()[0], 10**-30)
     plt.ylabel('$M_{DM}$ [$M_{\odot}$]', fontsize = 15)
-    plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$ for CoSIMP DM')
+    plt.title('Relationship between $M_{DM}$ and $m_\chi$ with $\sigma = 10^{-40}$')
     plt.legend(loc = 'best', ncol = 2)
-    plt.savefig('CoSIMP_DM_Core_highermchi.png', dpi = 200)
+    plt.savefig('DM_Core_highermchi.png', dpi = 200)
     plt.show()
+
 
 elif plottype == 'sigma':
 
@@ -1496,8 +1532,7 @@ elif plottype == 'Ca':
     plt.ylabel('$C_{A}$', fontsize = 15)
     plt.title('Relationship between $C_{A}$ and $\sigma$ with $m_\chi = 10^{-2}$ for 3-2 and $m_\chi = 10^{3}$ for 2-2 Annihilations')
     plt.legend(loc = 'best', ncol = 2)
-    plt.savefig('E_Tau_Scaling_Sigma.png', dpi = 200)
-    plt.show()
+    plt.savefig('Ca_Scaling_Sigma.png', dpi = 200)
 
 
 ########################################################################################################
@@ -1511,6 +1546,67 @@ elif plottype == 'Ca':
 #       1000M --> 1.000574002416353
 #
 ########################################################################################################
+
+    #Figure Formatting
+    fig2 = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+    E = 0
+    mchi = np.logspace(1, 5, 60)
+    sigma = 10**-40
+
+    Ca22 = [[],[]]
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        #Looping over all DM masses
+        for k in range(0, len(mchi)):
+            Ca22[i].append(Ca_22(mchi[k], stars_list[i], 10**14, vbar, sigma))
+
+
+        #Plotting
+        plt.plot(mchi, Ca22[i], color = area_color, label = str(M[i]) + ' $M_{\odot}$, 2-2 Annihilations')
+
+        slope, intercept = np.polyfit(np.log(mchi), np.log(Ca22[i]), 1)
+        print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$C_{A}$', fontsize = 15)
+    plt.title('Relationship between $C_{A}$ and $m_\chi$ with $\sigma = 10^{-40}$ for 2-2 Annihilations')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('Ca_Scaling_mchi.png', dpi = 200)
+    plt.show()
+
+
+########################################################################################################
+#
+#       SLOPE FOR 1 GEV < MCHI < 3 GEV:
+#       300M --> 0.9981718070494102
+#       1000M --> 0.9971767756141052
+#
+#       SLOPE WHILE IN CAPTURE REGION II:
+#       300M --> 1.0004718080571477
+#       1000M --> 1.000574002416353
+#
+########################################################################################################
+
 
 
 elif plottype == 'Vj':
