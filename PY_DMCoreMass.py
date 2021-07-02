@@ -756,7 +756,7 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using
 
     #Calculating the DM capture rate
     C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
-    #C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    #C = float(capture_analytic(mx, star, rho_chi, vbar, sigma))
 
     #Calculating effective volumes using SPERGEL method
     V1 = Vj_Eff_SP(star, mx, 1)
@@ -785,6 +785,19 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using
 
     return sigmav_lower
 
+#Isotropic DM distribution using potential from n=3 polytrope
+def nx_r(mx, r, star): #Normalized
+    xi = 6.81 * r/star.get_radius_cm()
+    kb = 1.380649e-16 #Boltzmann constant in cgs Units (erg/K)
+    Tx = tau_fit(mx, star) * 10**8 #K
+    #mx in g
+    mx_g = mx*1.783e-24
+
+    #Numerical DM number density profile for each DM mass (normalized)
+    nx_xi_val = np.exp(-mx_g*potential_poly(xi, star)/(kb*Tx))
+
+    return nx_xi_val
+
 #Annihilation coefficient -- 2-->2
 def Ca_22(mx, star, rho_chi, vbar, sigma):
     #sigv given by lower bounds
@@ -793,7 +806,7 @@ def Ca_22(mx, star, rho_chi, vbar, sigma):
 
     radius = star.get_radius_cm()
     thermal_radius = ((9*kb*star.core_temp)/(8*G*np.pi*star.core_density*mx*1.78*10**-24))**(1/2)
-    print(thermal_radius)
+    #print(thermal_radius)
     
 
     #Defining top and bottom integrands using Fully polytropic approximation
@@ -801,19 +814,52 @@ def Ca_22(mx, star, rho_chi, vbar, sigma):
         return 4*np.pi*(thermal_radius/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
 
     def integrand_bottom_Ca(xi, mx, star):
-        return (4*np.pi*(thermal_radius/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star))**2
+        return 4*np.pi*(thermal_radius/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+
+
+    def integrand_top_Ca_cgs(r, mx, star):
+        return 4*np.pi * sigv * r**2 * nx_r(mx, r, star)**2
+    def integrand_bottom_Ca_cgs(r, mx, star):
+        return 4*np.pi * r**2 * nx_r(mx, r, star)
 
     #print(integrand_top_Ca(xis[-1], mx, star))
     #print(integrand_bottom_Ca(xis[-1], mx, star))
 
-    #make plots of integrand vs. radius
+    if mx <= 10**3:
+        Ca = quad(integrand_top_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]**2
+        #Ca = 10**(1.2*np.log(mx)-56.2)
+    else:
+        Ca = quad(integrand_top_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]**2
+        #Ca = 10**(1.2*np.log(mx)-56.2)
 
-    Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/(quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0])
+
+    #Ca = quad(integrand_top_Ca_cgs, 0, star.get_radius_cm(), args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, star.get_radius_cm(), args=(mx, star))[0]**2
 
     #print("Ca: " + str(Ca))
 
     #Integrate over star
     return Ca
+
+
+
+#Defining top and bottom integrands using Fully polytropic approximation
+def integrand_top_Ca(r, mx, star):
+    sigv = 3*10**-26
+
+    radius = star.get_radius_cm()
+    thermal_radius = ((9*kb*star.core_temp)/(8*G*np.pi*star.core_density*mx*1.78*10**-24))**(1/2)
+        
+    return 4*np.pi * sigv * r**2 * nx_r(mx, r, star)**2
+
+def integrand_bottom_Ca(r, mx, star):
+    sigv = 3*10**-26
+
+    radius = star.get_radius_cm()
+    thermal_radius = ((9*kb*star.core_temp)/(8*G*np.pi*star.core_density*mx*1.78*10**-24))**(1/2)
+        
+    return 4*np.pi * r**2 * nx_r(mx, r, star)
+
+
 
 #Equilibration timescale -- 2-->2
 def tau_eq_22(mx, star, rho_chi, vbar, sigma):
@@ -825,7 +871,7 @@ def tau_eq_22(mx, star, rho_chi, vbar, sigma):
 
     #Calculating the DM capture rate
     C = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
-    #C = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    #C = float(capture_analytic(mx, star, rho_chi, vbar, sigma))
 
     #Annihlation coefficient
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
@@ -847,7 +893,7 @@ def N_chi_func_22(mx, sigma, star, rho_chi, vbar, E):
 
     tau_eq = tau_eq_22(mx, star, rho_chi, vbar, sigma)
     #C_tot = float(captureN_pureH(star, mx, rho_chi, vbar, sigma)[1])
-    C_tot = float(capture_analytic(sigma, star, mx, rho_chi, vbar))
+    C_tot = float(capture_analytic(mx, star, rho_chi, vbar, sigma))
     C_a = Ca_22(mx, star, rho_chi, vbar, sigma)
     k = kappa_evap22(mx, sigma, star, rho_chi, vbar, E)
 
@@ -927,7 +973,8 @@ rho_chi_adjust = [10**6, 10**3]
 plottype = input("Enter 'low mchi' for sub-GeV plot or 'high mchi' for massive DM particles.\nEnter 'sigma' for sigma vs. DM core.\n" +
                  "Enter 'E-tau mchi' for E*tau vs. mchi.\nEnter 'E-tau sigma' for E*tau vs. sigma.\nEnter 'Ca' for Ca vs. sigma.\n" +
                  "Enter 'Vj' to play around with effective volume.\nEnter 'nchi' for a normalized profile of captured DM.\n" +
-                 "Enter 'rchi' to examine the effective radius.\n\n")
+                 "Enter 'rchi' to examine the effective radius.\nEnter 'integrand' to view plots for Ca integrands.\n" +
+                 "Enter 'scaling' to work on various scalings with mchi.\n\n")
 
 if plottype == 'low mchi':
 
@@ -1083,7 +1130,7 @@ elif plottype == 'high mchi':
     palette = plt.get_cmap('viridis')
 
 
-    mchi_dat = np.logspace(1, 5, 28)
+    mchi_dat = np.logspace(1, 9, 28)
 
     E = 0
 
@@ -1554,7 +1601,7 @@ elif plottype == 'Ca':
 
 
     E = 0
-    mchi = np.logspace(1, 5, 60)
+    mchi = np.logspace(1, 9, 60)
     sigma = 10**-40
 
     Ca22 = [[],[]]
@@ -1798,6 +1845,190 @@ elif plottype == 'rchi':
 #       1000M --> -0.48436523903717144
 #
 ########################################################################################################
+
+
+
+elif plottype == 'integrand':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    mchi = np.logspace(1, 5, 60)
+
+    Ca_upper = []
+    Ca_lower = []
+    rthermal = []
+    Ca22 = []
+    trend = []
+
+
+
+    #Looping over all DM Masses
+    for i in range(0, len(mchi)):
+
+        Ca_upper.append(quad(integrand_top_Ca, 0, M300.get_radius_cm(), args=(mchi[i], M300))[0])
+        Ca_lower.append(quad(integrand_bottom_Ca, 0, M300.get_radius_cm(), args=(mchi[i], M300))[0])
+        rthermal.append(((9*kb*M300.core_temp)/(8*G*np.pi*M300.core_density*mchi[i]*1.78*10**-24))**(1/2))
+        Ca22.append(Ca_22(mchi[i], M300, 10**14, vbar, 10**-40))
+
+
+    #Plotting
+    plt.plot(mchi, Ca_upper, color = 'r',  label = '$C_{A}$ Upper Integral')
+    plt.plot(mchi, Ca_lower, color = 'b', label = '$C_{A}$ Lower Integral')
+
+    slope, intercept = np.polyfit(np.log(mchi), np.log(Ca_upper), 1)
+    print('slope: ' + str(slope))
+    #print('intercept: ' + str(intercept))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$C_{A}$ Integrals', fontsize = 15)
+    plt.title('Examining $C_{A}$ Integrals for 2-2 Annihilations')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('Ca_Integrals_mx.png', dpi = 200)
+
+
+    #~~~~~~~~~~~~~~~~~~ FIG 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #Figure Formatting
+    fig2 = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+    #Plotting
+    plt.plot(rthermal, Ca_upper, color = 'r',  label = '$C_{A}$ Upper Integral')
+    plt.plot(rthermal, Ca_lower, color = 'b', label = '$C_{A}$ Lower Integral')
+
+    #slope, intercept = np.polyfit(np.log(sigma), np.log(Etau_approx[i]), 1)
+    #print('slope of ' + str(M[i]) + 'M: ' + str(slope))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$r_\chi$ $[cm^{2}]$', fontsize = 15)
+    plt.xlim(rthermal[0], rthermal[-1])
+    plt.ylabel('$C_{A}$ Integrals', fontsize = 15)
+    plt.title('Examining $C_{A}$ Integrals for 2-2 Annihilations')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('Ca_Integrals_rx.png', dpi = 200)
+
+
+    #~~~~~~~~~~~~~~~~~~ FIG 3 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #Figure Formatting
+    fig3 = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+    #Plotting
+    plt.plot(mchi, Ca22, color = 'r', label = 'Calculated')
+
+    slope, intercept = np.polyfit(np.log(mchi), np.log(Ca22), 1)
+    print('slope: ' + str(slope))
+    print('intercept: ' + str(intercept))
+
+    for i in range(0, len(mchi)):
+        trend.append(10**(1.5*np.log(mchi[i])-134.072))
+
+    plt.plot(mchi, trend, color = 'k', ls = '--', label = 'Trend')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$C_{A}$', fontsize = 15)
+    plt.title('Examining $C_{A}$ Integrals for 2-2 Annihilations (Best Fit)')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('Ca_Integrals_bestfit.png', dpi = 200)
+    plt.show()
+
+
+
+elif plottype == 'scaling':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    mchi = np.logspace(1, 3, 60)
+
+    capture = []
+    Nchi = []
+
+
+
+    #Looping over all DM Masses
+    for i in range(0, len(mchi)):
+
+        capture.append(capture_analytic(mchi[i], M300, 10**14, vbar, 10**-40))
+        Nchi.append(N_chi_func_22(mchi[i], 10**-40, M300, 10**14, vbar, 0))
+
+
+    #Plotting
+    plt.plot(mchi, capture, color = 'r')
+
+    slope, intercept = np.polyfit(np.log(mchi), np.log(capture), 1)
+    print('slope: ' + str(slope))
+    #print('intercept: ' + str(intercept))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$C_{TOT}$ $[s^{-1}]$', fontsize = 15)
+    plt.title('Examining $C_{TOT}$ for WIMP DM')
+    #plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('CTOT_mx.png', dpi = 200)
+
+    #~~~~~~~~~~~~~~~~~~ FIG 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #Figure Formatting
+    fig2 = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+    #Plotting
+    plt.plot(mchi, Nchi, color = 'b')
+
+    slope, intercept = np.polyfit(np.log(mchi), np.log(Nchi), 1)
+    print('slope: ' + str(slope))
+    #print('intercept: ' + str(intercept))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylabel('$N_\chi$', fontsize = 15)
+    plt.title('Examining $N_\chi$ vs. DM Mass')
+    #plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('NX_mx.png', dpi = 200)
+    plt.show()
 
 
 else:

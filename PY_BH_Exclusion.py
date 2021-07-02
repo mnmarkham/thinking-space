@@ -295,8 +295,8 @@ def sigma_mchi_pureH(star, Mchi, rho_chi, vbar, t): #Takes M, R and L in solar u
 
 
     #First guess for Ctot
-    #Ctot = float(captureN_pureH(star, Mchi, float(rho_chi), vbar, sigma)[1])
-    Ctot = F_capture(Mchi, star, float(rho_chi), vbar, sigma, t)
+    Ctot = float(captureN_pureH(star, Mchi, float(rho_chi), vbar, sigma)[1])
+    #Ctot = F_capture(Mchi, star, float(rho_chi), vbar, sigma, t)
 
     #Sigma is found when log(Ctot_num) - log(Ctot_true) becomes less than stipulated
     # See Eq. 2.2-2.3 of companion paper for conditions
@@ -313,10 +313,43 @@ def sigma_mchi_pureH(star, Mchi, rho_chi, vbar, t): #Takes M, R and L in solar u
             sigma = sigma * rate
 
         # Recalculates new guess for Ctot
-        #Ctot = float(captureN_pureH(star, Mchi, float(rho_chi), vbar, sigma)[1])
-        Ctot = F_capture(Mchi, star, float(rho_chi), vbar, sigma, t)
+        Ctot = float(captureN_pureH(star, Mchi, float(rho_chi), vbar, sigma)[1])
+        #Ctot = F_capture(Mchi, star, float(rho_chi), vbar, sigma, t)
 
     return sigma
+
+
+def sigma_Nx(star, mchi, rho_chi, vbar, t): #Takes M, R and L in solar units
+
+    #Nx Limit
+    Nx_limit = (5*10**48)*(mchi/10**3)**-3
+
+    #First guess for sigma based on Xenon1T bounds
+    sigma = (1.26*10**(-40))*(mchi/(10**8))
+
+
+    #First guess for Nx
+    Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+
+    #Sigma is found when log(Ctot_num) - log(Ctot_true) becomes less than stipulated
+    # See Eq. 2.2-2.3 of companion paper for conditions
+    while(abs(np.log10(Nx) - np.log10(Nx_limit)) > 0.004):
+
+        #Rate at which sigma is multiplied/divided by to get closer and closer to true Capture Rate
+        #See Eq. 2.4 of companion paper
+        rate = abs(np.log10(Nx) - np.log10(Nx_limit))*10
+
+        #Tells whether divide or multiply by rate depending on if our guess is too big or too small
+        if (Nx/Nx_limit > 1):
+            sigma = sigma * (1/rate)
+        else:
+            sigma = sigma * rate
+
+        # Recalculates new guess for Ctot
+        Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+
+    return sigma
+
 
 
 def rhoSigma_mchi_pureH(M, R, L, Mchi, vbar, smallRv, smallTaus):
@@ -787,6 +820,19 @@ def sigV_lowerBound(star, frac_life, mx, rho_chi, vbar, sigma, Ann_type): #Using
 
     return sigmav_lower
 
+#Isotropic DM distribution using potential from n=3 polytrope
+def nx_r(mx, r, star): #Normalized
+    xi = 6.81 * r/star.get_radius_cm()
+    kb = 1.380649e-16 #Boltzmann constant in cgs Units (erg/K)
+    Tx = tau_fit(mx, star) * 10**8 #K
+    #mx in g
+    mx_g = mx*1.783e-24
+
+    #Numerical DM number density profile for each DM mass (normalized)
+    nx_xi_val = np.exp(-mx_g*potential_poly(xi, star)/(kb*Tx))
+
+    return nx_xi_val
+
 #Annihilation coefficient -- 2-->2
 def Ca_22(mx, star, rho_chi, vbar, sigma):
     #sigv given by lower bounds
@@ -795,18 +841,34 @@ def Ca_22(mx, star, rho_chi, vbar, sigma):
 
     radius = star.get_radius_cm()
     thermal_radius = ((9*kb*star.core_temp)/(8*G*np.pi*star.core_density*mx*1.78*10**-24))**(1/2)
-
+    #print(thermal_radius)
+    
 
     #Defining top and bottom integrands using Fully polytropic approximation
     def integrand_top_Ca(xi, mx, star):
         return 4*np.pi*(thermal_radius/xis[-1])**3 * sigv * xi**2 * nx_xi(mx, xi, star)**2
+
     def integrand_bottom_Ca(xi, mx, star):
-        return (4*np.pi*(thermal_radius/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star))**2
+        return 4*np.pi*(thermal_radius/xis[-1])**3 * xi**2 * nx_xi(mx, xi, star)
+
+
+    def integrand_top_Ca_cgs(r, mx, star):
+        return 4*np.pi * sigv * r**2 * nx_r(mx, r, star)**2
+    def integrand_bottom_Ca_cgs(r, mx, star):
+        return 4*np.pi * r**2 * nx_r(mx, r, star)
 
     #print(integrand_top_Ca(xis[-1], mx, star))
     #print(integrand_bottom_Ca(xis[-1], mx, star))
 
-    Ca = quad(integrand_top_Ca, 0, xis[-1], args=(mx, star))[0]/(quad(integrand_bottom_Ca, 0, xis[-1], args=(mx, star))[0])
+    if mx <= 10**3:
+        Ca = quad(integrand_top_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]**2
+        #Ca = 10**(1.2*np.log(mx)-56.2)
+    else:
+        Ca = quad(integrand_top_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, thermal_radius, args=(mx, star))[0]**2
+        #Ca = 10**(1.2*np.log(mx)-56.2)
+
+
+    #Ca = quad(integrand_top_Ca_cgs, 0, star.get_radius_cm(), args=(mx, star))[0]/quad(integrand_bottom_Ca_cgs, 0, star.get_radius_cm(), args=(mx, star))[0]**2
 
     #print("Ca: " + str(Ca))
 
@@ -904,7 +966,8 @@ def F_capture(mx, star, rho_chi, vbar, sigma, t):
 def Nx_t_diff(mx, rho_chi, vbar, sigma, star, t_1):
 
     #relevant paramters
-    Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t_1) #s^-1
+    #Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t_1) #s^-1
+    Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1])
     
     #Differential equation function
     dNxdt = lambda t, Nx, Ctot = Ctot: Ctot
@@ -921,11 +984,12 @@ def Nx_t_diff(mx, rho_chi, vbar, sigma, star, t_1):
 def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
 
     #relevant paramters
-    Ctot = F_capture(mx, star, rho_chi, vbar, sigma) #s^-1
+    Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1]) #s^-1
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
+    E = evap_coeff_Ilie_approx2(mx, sigma, star)
     
     #Differential equation function
-    dNxdt = lambda t, Nx, Ctot = Ctot, Ca = Ca: Ctot - Ca*Nx**3
+    dNxdt = lambda t, Nx, Ctot = Ctot, Ca = Ca, E = E: Ctot - Ca*Nx**3 - E*Nx
     
     #Nx(t)
     sol = solve_ivp(dNxdt, (0, t_1), [0], t_eval = [t_1])
@@ -975,7 +1039,8 @@ WD = PopIIIStar(1, .015, 10**-2, 10**5, 10**6, 10**10)
 #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 plottype = input("Enter 'pop iii' for black hole exclusion with Pop III star parameters.\nEnter 'wd' for a reproduction of the black hole exclusion from 1012.2039.\n" +
-                 "Enter 'Nx' to look at Nx values using 1012.2039 functions.\n\n")
+                 "Enter 'Nx' to look at Nx values using 1012.2039 functions.\nEnter 'fig 1' for fig 1 replicated by reading data from the original plot.\n" +
+                 "Enter 'Nx pop iii' for Nx values attained by Pop III stars.\n\n")
 
 if plottype == 'pop iii':
 
@@ -988,7 +1053,7 @@ if plottype == 'pop iii':
 
     E = 0
 
-    mchi_dat = np.logspace(0, 5, 60)
+    mchi_dat = np.logspace(0, 9, 30)
     rho_chis = [10**13, 10**16]
     rho_adjust = [10**6, 10**3]
     sigma = [[],[]]
@@ -1009,13 +1074,16 @@ if plottype == 'pop iii':
         #Looping over all DM masses
         for k in range(0, len(mchi_dat)):
 
-            temp = sigma_mchi_pureH(M300, mchi_dat[k], 10**19, vbar, 10**5) * rho_adjust[i]
+            print('working on mx = ' + str(mchi_dat[k]))
+
+            temp = sigma_Nx(M300, mchi_dat[k], 10**19, vbar, 10**5) * rho_adjust[i]
+            #Nx = N_chi_func_22(mchi_dat[k], temp, M300, rho_chis[i], vbar, 0)
             Nx = Nx_t_diff(mchi_dat[k], rho_chis[i], vbar, temp, M300, 10**5)
 
-            if Nx >= (5*10**48)*(mchi_dat[k]/10**3)**-3:
+            #if Nx > (5*10**48)*(mchi_dat[k]/10**3)**-3:
 
-                sigma[i].append(temp)
-                mchi[i].append(mchi_dat[k])
+            sigma[i].append(temp)
+            mchi[i].append(mchi_dat[k])
 
             sd[i].append(10**-39 * mchi_dat[k])
 
@@ -1026,21 +1094,6 @@ if plottype == 'pop iii':
 
 
 
-    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-##    mchi_300M_dat = np.asarray(mchi_300M_dat)
-##    MDM_300M_dat = np.asarray(M_DM[0][0])
-##    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-##    file = "mchi_MDM_300M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
-##
-##    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-##    MDM_1000M_dat = np.asarray(M_DM[1][0])
-##    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-##    file = "mchi_MDM_1000M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
-
-
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     #print(mchi)
@@ -1049,7 +1102,7 @@ if plottype == 'pop iii':
     plt.yscale('log')
     plt.xscale('log')
     plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-    plt.xlim(mchi[0][0], mchi[0][-1])
+    plt.xlim(mchi_dat[0], mchi_dat[-1])
     #plt.ylim(10**-50, 10**-30)
     plt.ylabel('$\sigma$ [$cm^{2}$]', fontsize = 15)
     plt.title('Reproduction of Figure 1 from 1012.2039 to Fit Pop III Stars')
@@ -1106,22 +1159,6 @@ elif plottype == 'wd':
         plt.plot(mchi_dat, sd[i], color = area_color, label = '$\\rho_\chi$ = ' + str(rho_chis[i]))
 
 
-
-    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-##    mchi_300M_dat = np.asarray(mchi_300M_dat)
-##    MDM_300M_dat = np.asarray(M_DM[0][0])
-##    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-##    file = "mchi_MDM_300M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
-##
-##    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-##    MDM_1000M_dat = np.asarray(M_DM[1][0])
-##    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-##    file = "mchi_MDM_1000M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
-
-
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     #print(mchi)
@@ -1130,7 +1167,7 @@ elif plottype == 'wd':
     plt.yscale('log')
     plt.xscale('log')
     plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-    plt.xlim(mchi[0][0], mchi[0][-1])
+    plt.xlim(mchi_dat[0], mchi_dat[-1])
     #plt.ylim(10**-42, 10**-30)
     plt.ylabel('$\sigma$ [$cm^{2}$]', fontsize = 15)
     plt.title('Reproduction of Figure 1 from 1012.2039 with a Typical WD ')
@@ -1152,7 +1189,7 @@ elif plottype == 'Nx':
 
     timespan = np.logspace(0, 10, 60)
     rho_chis = [10**3, 10**4]
-    sigma = 10**-40
+    sigma = 10**-42
     mchi = 10**4
 
     Nx = [[],[]]
@@ -1172,7 +1209,7 @@ elif plottype == 'Nx':
         #Looping over all DM masses
         for k in range(0, len(timespan)):
 
-            Nx[i].append(Nx_t_diff(mchi, rho_chis[i], vbar, sigma, Sun, timespan[k]))
+            Nx[i].append(Nx_t_diff(mchi, rho_chis[i], vbar, sigma, WD, timespan[k]))
 
 
 
@@ -1180,23 +1217,7 @@ elif plottype == 'Nx':
         plt.plot(timespan, Nx[i], color = area_color, label = '$\\rho_\chi$ = ' + str(rho_chis[i]))
 
 
-    plt.plot(timespan, Nx_limit, color = area_color, label = '$N_\chi$ Limit')
-
-
-
-    #~~~~~~~~~~~~~~~~~~ SAVING DATA TO CSV FILES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-##    mchi_300M_dat = np.asarray(mchi_300M_dat)
-##    MDM_300M_dat = np.asarray(M_DM[0][0])
-##    output = np.column_stack((mchi_300M_dat.flatten(), MDM_300M_dat.flatten()))
-##    file = "mchi_MDM_300M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
-##
-##    mchi_1000M_dat = np.asarray(mchi_1000M_dat)
-##    MDM_1000M_dat = np.asarray(M_DM[1][0])
-##    output = np.column_stack((mchi_1000M_dat.flatten(), MDM_1000M_dat.flatten()))
-##    file = "mchi_MDM_1000M_highsig.csv"
-##    np.savetxt(file,output,delimiter=',')
+    plt.plot(timespan, Nx_limit, color = 'k', ls = '--', label = '$N_\chi$ Limit')
 
 
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1213,6 +1234,183 @@ elif plottype == 'Nx':
     plt.title('Reproduction of $N_\chi$ Values from 1012.2039')
     plt.legend(loc = 'best', ncol = 2) 
     plt.savefig('nx_reproduce.png', dpi = 200)
+    plt.show()
+
+
+elif plottype == 'fig 1':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('plasma')
+
+
+
+    mchi1 = []
+    sig1 = []
+    with open('fig1_read_data.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            mchi1.append(float(row[0]))
+            sig1.append(float(row[1]))
+
+    mchi2 = []
+    sig2 = []
+    with open('fig1_read_data2.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            mchi2.append(float(row[0]))
+            sig2.append(float(row[1]))
+
+    mchi_dat = np.logspace(0, 9, 60)
+    rho_chis = [10**3, 10**4]
+    rho_adjust = [10**16, 10**15]
+    sd = []
+
+
+    #Looping over all DM Masses
+    for i in range(0, len(mchi_dat)):
+
+        sd.append(10**-39 * mchi_dat[i])
+
+    for i in range(0, len(mchi1)):
+
+        mchi1[i] = 10**mchi1[i]
+        sig1[i] = 10**sig1[i]
+
+
+    for i in range(0, len(mchi2)):
+
+        mchi2[i] = 10**mchi2[i]
+        sig2[i] = 10**sig2[i]
+
+
+    #Plotting
+    plt.plot(mchi1, sig1, color = 'r', ls = '--', label = '$\\rho_\chi$ = $10^{4}$' )
+    plt.plot(mchi2, sig2, color = 'r', label = '$\\rho_\chi$ = $10^{3}$')
+    plt.plot(mchi_dat, sd, color = 'b', label = 'SD Direct Detection Bounds')
+
+
+    slope, intercept = np.polyfit(np.log(mchi1), np.log(sig1), 1)
+    print("slope of px = 10^4: " + str(slope))
+
+    slope2, intercept2 = np.polyfit(np.log(mchi2), np.log(sig2), 1)
+    print("slope of px = 10^3: " + str(slope2))
+
+
+########################################################################################################
+#
+#       SLOPE OF BH EXCLUSIONS:
+#       10^3 --> -1.0074196757915095
+#       10^4 --> -1.0146510395831208
+#
+########################################################################################################
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi_dat[0], mchi_dat[-1])
+    #plt.ylim(10**-42, 10**-30)
+    plt.ylabel('$\sigma$ [$cm^{2}$]', fontsize = 15)
+    plt.title('Reproduction of Figure 1 from 1012.2039')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('fig1_read_data_plotted.png', dpi = 200)
+    plt.show()
+
+
+
+elif plottype == 'Nx pop iii':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+
+
+    E = 0
+
+    timespan = np.logspace(0, 6, 50)
+    rho_chis = [10**13, 10**16]
+    sigma = 10**-42
+    mchi = 10**4
+    mx = np.logspace(1, 5, 50)
+
+    Nx = [[],[]]
+    Nx_eq = []
+    Nx_limit = np.full(50, (5*10**48)*(mchi/10**3)**-3)
+
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(rho_chis)):
+
+        #Color formatting of plot
+        colors = palette(i/len(rho_chis))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+
+        #Looping over all DM masses
+        for k in range(0, len(timespan)):
+
+            Nx[i].append(Nx_t_diff(mchi, rho_chis[i], vbar, sigma, M300, timespan[k]))
+
+
+        #Plotting
+        plt.plot(timespan, Nx[i], color = area_color, label = '$\\rho_\chi$ = ' + str(rho_chis[i]))
+
+
+    plt.plot(timespan, Nx_limit, color = 'k', ls = '--', label = '$N_\chi$ Limit')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #print(mchi)
+    #print(sigma)
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('time [yrs]', fontsize = 15)
+    plt.xlim(timespan[0], timespan[-1])
+    #plt.ylim(10**-50, 10**-30)
+    plt.ylabel('$N_\chi$', fontsize = 15)
+    plt.title('$N_\chi$ Values Over Time in Pop III Stars')
+    plt.legend(loc = 'best', ncol = 2) 
+    plt.savefig('nx_popiii.png', dpi = 200)
+
+
+    #~~~~~~~~~~~~~~~~~ FIG 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+    for i in range(0, len(mx)):
+
+        Nx_eq.append(N_chi_func_22(mx[i], sigma, M300, 10**14, vbar, 0))
+
+    plt.plot(mx, Nx_eq, color = 'r')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #print(mchi)
+    #print(sigma)
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mx[0], mx[-1])
+    #plt.ylim(10**-50, 10**-30)
+    plt.ylabel('$N_\chi$', fontsize = 15)
+    plt.title('$N_\chi$ Values at Equilibrium in Pop III Stars')
+    #plt.legend(loc = 'best', ncol = 2) 
+    plt.savefig('nx_mx_popiii.png', dpi = 200)
     plt.show()
 
 
