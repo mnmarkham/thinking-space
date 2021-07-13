@@ -319,7 +319,7 @@ def sigma_mchi_pureH(star, Mchi, rho_chi, vbar, t): #Takes M, R and L in solar u
     return sigma
 
 
-def sigma_Nx(star, mchi, rho_chi, vbar, t): #Takes M, R and L in solar units
+def sigma_Nx(star, mchi, rho_chi, vbar, t):
 
     #Nx Limit
     Nx_limit = (5*10**48)*(mchi/10**3)**-3
@@ -329,7 +329,8 @@ def sigma_Nx(star, mchi, rho_chi, vbar, t): #Takes M, R and L in solar units
 
 
     #First guess for Nx
-    Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+    #Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+    Nx = float(Nx_analytic(mchi, rho_chi, vbar, sigma, star, t))
 
     #Sigma is found when log(Ctot_num) - log(Ctot_true) becomes less than stipulated
     # See Eq. 2.2-2.3 of companion paper for conditions
@@ -346,7 +347,43 @@ def sigma_Nx(star, mchi, rho_chi, vbar, t): #Takes M, R and L in solar units
             sigma = sigma * rate
 
         # Recalculates new guess for Ctot
-        Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+        #Nx = float(Nx_t_diff(mchi, rho_chi, vbar, sigma, star, t))
+        Nx = float(Nx_analytic(mchi, rho_chi, vbar, sigma, star, t))
+
+    print('sigma: ' +str(sigma))
+
+    return sigma
+
+def sigma_Nx_Ca(star, mchi, rho_chi, vbar, t):
+
+    #Nx Limit
+    Nx_limit = (5*10**48)*(mchi/10**3)**-3
+
+    #First guess for sigma based on Xenon1T bounds
+    sigma = (1.26*10**(-40))*(mchi/(10**8))
+
+    E = 0
+
+
+    #First guess for Nx
+    Nx = float(Nx_t_diff_Ca(mchi, rho_chi, vbar, sigma, star, t))
+
+    #Sigma is found when log(Ctot_num) - log(Ctot_true) becomes less than stipulated
+    # See Eq. 2.2-2.3 of companion paper for conditions
+    while(abs(np.log10(Nx) - np.log10(Nx_limit)) > 0.004):
+
+        #Rate at which sigma is multiplied/divided by to get closer and closer to true Capture Rate
+        #See Eq. 2.4 of companion paper
+        rate = abs(np.log10(Nx) - np.log10(Nx_limit))
+
+        #Tells whether divide or multiply by rate depending on if our guess is too big or too small
+        if (Nx/Nx_limit > 1):
+            sigma = sigma * (1/rate)
+        else:
+            sigma = sigma * rate
+
+        # Recalculates new guess for Ctot
+        Nx = float(Nx_t_diff_Ca(mchi, rho_chi, vbar, sigma, star, t))
 
     return sigma
 
@@ -966,8 +1003,8 @@ def F_capture(mx, star, rho_chi, vbar, sigma, t):
 def Nx_t_diff(mx, rho_chi, vbar, sigma, star, t_1):
 
     #relevant paramters
-    #Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t_1) #s^-1
-    Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1])
+    Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t_1) #s^-1
+    #Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1])
     
     #Differential equation function
     dNxdt = lambda t, Nx, Ctot = Ctot: Ctot
@@ -980,22 +1017,39 @@ def Nx_t_diff(mx, rho_chi, vbar, sigma, star, t_1):
     
     return Nx_t1
 
-#Calculates total number of DM particles in the star at a given time, t
-def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
+def Nx_analytic(mx, rho_chi, vbar, sigma, star, t):
 
     #relevant paramters
-    Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1]) #s^-1
+    Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t) #s^-1
+    #Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1])
+
+    t_s = t * 3.154*10**7
+
+    Nx_t = Ctot * t_s
+
+    return Nx_t
+    
+
+#Calculates total number of DM particles in the star at a given time, t
+def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
+    
+
+    #relevant paramters
+    #Ctot = float(captureN_pureH(star, mx, float(rho_chi), vbar, sigma)[1]) #s^-1
+    Ctot = F_capture(mx, star, rho_chi, vbar, sigma, t_1)
     Ca = Ca_22(mx, star, rho_chi, vbar, sigma)
-    E = evap_coeff_Ilie_approx2(mx, sigma, star)
+    #E = evap_coeff_Ilie_approx2(mx, sigma, star)
     
     #Differential equation function
-    dNxdt = lambda t, Nx, Ctot = Ctot, Ca = Ca, E = E: Ctot - Ca*Nx**3 - E*Nx
+    dNxdt = lambda t, Nx, Ctot = Ctot, Ca = Ca, E = E: Ctot - Ca*Nx**3
     
     #Nx(t)
     sol = solve_ivp(dNxdt, (0, t_1), [0], t_eval = [t_1])
     
     #Nx_t1 = # Of DM particles at t1
     Nx_t1 = sol.y[0][0]
+
+    print(Nx_t1)
     
     return Nx_t1
 
@@ -1040,7 +1094,8 @@ WD = PopIIIStar(1, .015, 10**-2, 10**5, 10**6, 10**10)
 
 plottype = input("Enter 'pop iii' for black hole exclusion with Pop III star parameters.\nEnter 'wd' for a reproduction of the black hole exclusion from 1012.2039.\n" +
                  "Enter 'Nx' to look at Nx values using 1012.2039 functions.\nEnter 'fig 1' for fig 1 replicated by reading data from the original plot.\n" +
-                 "Enter 'Nx pop iii' for Nx values attained by Pop III stars.\n\n")
+                 "Enter 'Nx pop iii' for Nx values attained by Pop III stars.\nEnter 'final' for polished Nx Pop III exclusion plots.\n" +
+                 "Enter 'Nx comp' for a comparison of differential vs, analytic functions for nonannihilating DM.\n\n")
 
 if plottype == 'pop iii':
 
@@ -1053,7 +1108,7 @@ if plottype == 'pop iii':
 
     E = 0
 
-    mchi_dat = np.logspace(0, 9, 30)
+    mchi_dat = np.logspace(0, 4, 10)
     rho_chis = [10**13, 10**16]
     rho_adjust = [10**6, 10**3]
     sigma = [[],[]]
@@ -1076,9 +1131,9 @@ if plottype == 'pop iii':
 
             print('working on mx = ' + str(mchi_dat[k]))
 
-            temp = sigma_Nx(M300, mchi_dat[k], 10**19, vbar, 10**5) * rho_adjust[i]
+            temp = sigma_Nx_Ca(M300, mchi_dat[k], 10**19, vbar, 10**5) * rho_adjust[i]
             #Nx = N_chi_func_22(mchi_dat[k], temp, M300, rho_chis[i], vbar, 0)
-            Nx = Nx_t_diff(mchi_dat[k], rho_chis[i], vbar, temp, M300, 10**5)
+            Nx = Nx_t_diff_Ca(mchi_dat[k], rho_chis[i], vbar, temp, M300, 10**5)
 
             #if Nx > (5*10**48)*(mchi_dat[k]/10**3)**-3:
 
@@ -1122,7 +1177,7 @@ elif plottype == 'wd':
 
     E = 0
 
-    mchi_dat = np.logspace(0, 9, 60)
+    mchi_dat = np.logspace(1, 5, 20)
     rho_chis = [10**3, 10**4]
     rho_adjust = [10**16, 10**15]
     sigma = [[],[]]
@@ -1143,20 +1198,27 @@ elif plottype == 'wd':
         #Looping over all DM masses
         for k in range(0, len(mchi_dat)):
 
-            temp = sigma_mchi_pureH(WD, mchi_dat[k], 10**19, vbar, 10**9) * rho_adjust[i]
-            Nx = Nx_t_diff(mchi_dat[k], rho_chis[i], vbar, temp, WD, 10**9)
+            temp = sigma_Nx(Sun, mchi_dat[k], 10**19, vbar, 10**10) * rho_adjust[i]
+            Nx = Nx_analytic(mchi_dat[k], rho_chis[i], vbar, temp, Sun, 10**10)
 
-            if Nx >= (5*10**48)*(mchi_dat[k]/10**3)**-3:
 
-                sigma[i].append(temp)
-                mchi[i].append(mchi_dat[k])
+            sigma[i].append(temp)
+            mchi[i].append(mchi_dat[k])
 
             sd[i].append(10**-39 * mchi_dat[k])
 
 
-        #Plotting
-        plt.plot(mchi[i], sigma[i], color = area_color, label = '$\\rho_\chi$ = ' + str(rho_chis[i]))
-        plt.plot(mchi_dat, sd[i], color = area_color, label = '$\\rho_\chi$ = ' + str(rho_chis[i]))
+    #Plotting
+    plt.plot(mchi[0], sigma[0], color = 'dimgray', label = '$\\rho_\chi$ = $10^{3}$')
+    plt.plot(mchi[1], sigma[1], color = 'dimgray', ls = '--', label = '$\\rho_\chi$ = $10^{4}$')
+
+    plt.plot(mchi_dat, sd[0], color = area_color, label = 'SD Direct Detection Bound')
+    plt.fill_between(mchi_dat, sd[0], 10**-10, color = 'dimgray')
+
+
+    slope, intercept = np.polyfit(np.log(mchi[0]), np.log(sigma[0]), 1)
+    print("slope: " + str(slope))
+    print("intercept: " + str(intercept))
 
 
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1168,7 +1230,7 @@ elif plottype == 'wd':
     plt.xscale('log')
     plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
     plt.xlim(mchi_dat[0], mchi_dat[-1])
-    #plt.ylim(10**-42, 10**-30)
+    plt.ylim(plt.ylim()[0], 10**-20)
     plt.ylabel('$\sigma$ [$cm^{2}$]', fontsize = 15)
     plt.title('Reproduction of Figure 1 from 1012.2039 with a Typical WD ')
     plt.legend(loc = 'best', ncol = 2)
@@ -1293,9 +1355,11 @@ elif plottype == 'fig 1':
 
     slope, intercept = np.polyfit(np.log(mchi1), np.log(sig1), 1)
     print("slope of px = 10^4: " + str(slope))
+    print('intercept: ' + str(intercept))
 
     slope2, intercept2 = np.polyfit(np.log(mchi2), np.log(sig2), 1)
     print("slope of px = 10^3: " + str(slope2))
+    print('intercept: ' + str(intercept2))
 
 
 ########################################################################################################
@@ -1390,11 +1454,15 @@ elif plottype == 'Nx pop iii':
     plt.style.use('fast')
     palette = plt.get_cmap('viridis')
 
+    Nx_limit = []
+
     for i in range(0, len(mx)):
 
         Nx_eq.append(N_chi_func_22(mx[i], sigma, M300, 10**14, vbar, 0))
+        Nx_limit.append((5*10**48)*(mx[i]/10**3)**-3)
 
-    plt.plot(mx, Nx_eq, color = 'r')
+    plt.plot(mx, Nx_eq, color = 'r', label = '$N_\chi$ at Equilibrium')
+    plt.plot(mx, Nx_limit, color = 'k', ls = '--', label = '$N_\chi$ Limit')
 
 
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1409,9 +1477,252 @@ elif plottype == 'Nx pop iii':
     #plt.ylim(10**-50, 10**-30)
     plt.ylabel('$N_\chi$', fontsize = 15)
     plt.title('$N_\chi$ Values at Equilibrium in Pop III Stars')
-    #plt.legend(loc = 'best', ncol = 2) 
+    plt.legend(loc = 'best', ncol = 2) 
     plt.savefig('nx_mx_popiii.png', dpi = 200)
     plt.show()
+
+
+elif plottype == 'final':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+
+    #~~~~~~~~ DM PARAMS ~~~~~~~~~~~~~~~~~
+
+    #Definition of DM mass ranges
+    mchi_xenon = np.logspace(2.9, 15, 16)
+    mchi_nf = np.logspace(2.9, 15, 16)
+    mchi_pico = np.logspace(2.9, 15, 16)
+    mchi = np.logspace(1, 10, 30)
+
+    #Orders of magnitude from 10^19 to get Densities
+    rho_chi_adjust = [10**6, 10**3]
+
+
+    #~~~~~~~~~~ SIGMA DD BOUNDS DATA ~~~~~~~~~~~~~~~~
+
+    #Reading PICO-60 SD Data
+    mchi_P60_dat = []
+    sigma_P60_dat = []
+    with open('PICO60_SD.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            mchi_P60_dat.append(float(row[0]))
+            sigma_P60_dat.append(float(row[1]))
+
+
+    #Reading PICO-60 NF Data
+    mchi_P60NF_dat = []
+    sigma_P60NF_dat = []
+    with open('NF_PICO60.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            mchi_P60NF_dat.append(float(row[0]))
+            sigma_P60NF_dat.append(float(row[1]))
+
+
+    #~~~~~~~~~~~~~~~~ CALCULATING POP III BOUNDS ON SIGMA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    M = [300]
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(M)):
+
+        #Color formatting of plot
+        colors = palette(i/len(M))
+        area_color = list(colors)
+        area_color[3] = 0.2
+
+        #Re-initalizing Sigma for each star
+        sigma = []
+
+        #Looping over all densities
+        for j in range(0, len(rho_chi_adjust)):
+
+            #Each density has a list of sigma within a list
+            sigma.append([])
+
+            #Looping over all DM masses
+            for k in range(0, len(mchi)):
+
+                print('working on mx = ' + str(mchi[k]))
+
+                sigma[j].append(sigma_Nx(stars_list[i], mchi[k], 10**19, vbar, 10**6) * rho_chi_adjust[j])
+
+
+        #Undertainty region of Rho_chi, featuring two lines and a shaded region
+        plt.plot(mchi, sigma[0], color = 'dimgray', label = str(M[i]) + '$M_\odot$, $\\rho_\chi = 10^{13}$')
+        plt.plot(mchi, sigma[1], ls = '--', color = 'dimgray', label = str(M[i]) + '$M_\odot$, $\\rho_\chi = 10^{16}$')
+        plt.fill_between(mchi, sigma[0], 10**-25, color = area_color)
+        plt.fill_between(mchi, sigma[1], 10**-25, color = area_color)
+
+
+    #~~~~~~~~~~~~~ PLOTTING DD BOUNDS ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #PICO bounds, Current and NF from 10^3 - 10^16
+    sigma_pico = 3.42e-40*(mchi_pico/10**3)
+    sigma_picoNF = 8.67e-47*(mchi_nf)
+
+    #PICO60 Data up to ~ 10^3
+    #plt.plot(mchi_P60_dat, sigma_P60_dat, color ='honeydew', ls = '-', linewidth = 1)
+    plt.fill_between(mchi_P60_dat, sigma_P60_dat, 10**-25, color = 'dimgray')
+
+    #PICO60 FIT
+    #plt.plot(mchi_pico, sigma_pico, color ='honeydew', ls = '-', linewidth = 1, label = 'PICO-60 SD Bounds')
+    plt.fill_between(mchi_pico, sigma_pico, 10**-25, color = 'dimgray')
+    plt.text(10**4, 10**-34, "PICO-60", color = 'white', fontsize = '12')
+
+    #PICO_NF Data up to ~ 10^3
+    plt.plot(mchi_P60NF_dat, sigma_P60NF_dat, color = 'k', ls = '-', linewidth = 1.5)
+
+    #PICO_NF FIT
+    plt.plot(mchi_nf, sigma_picoNF, color = 'k', ls = '-', linewidth = 1.5, label = 'PICO SD Neutrino Floor')
+
+
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    plt.ylim(plt.ylim()[0], 10**-30)
+    plt.ylabel('$\sigma$ [$cm^2$]', fontsize =15)
+    plt.title('BH Exclusion Bounds on $\sigma$ for Non-Annihilating DM, Varying $M_\star$ and $\\rho_\chi$')
+    plt.legend(loc = 'best', ncol = 2)
+    plt.savefig('sigma_mchi_BH_Exclusion.png', dpi = 200)
+    plt.show()
+
+
+
+##    #~~~~~~~~~~~~~~~~~ FIG 2 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##
+##    #Figure Formatting
+##    fig = plt.figure(figsize = (12, 10))
+##    plt.style.use('fast')
+##    palette = plt.get_cmap('viridis')
+##
+##
+##    #Looping over all Stellar Masses
+##    for i in range(0, len(M)):
+##
+##        #Color formatting of plot
+##        colors = palette(i/len(M))
+##        area_color = list(colors)
+##        area_color[3] = 0.2
+##
+##        #Re-initalizing Sigma for each star
+##        sigma = []
+##
+##        #Looping over all densities
+##        for j in range(0, len(rho_chi_adjust)):
+##
+##            #Each density has a list of sigma within a list
+##            sigma.append([])
+##
+##            #Looping over all DM masses
+##            for k in range(0, len(mchi)):
+##
+##                print('working on mx = ' + str(mchi[k]))
+##
+##                sigma[j].append(sigma_Nx_Ca(stars_list[i], mchi[k], 10**19, vbar, 10**6) * rho_chi_adjust[j])
+##
+##
+##        #Undertainty region of Rho_chi, featuring two lines and a shaded region
+##        plt.plot(mchi, sigma[0], color = 'dimgray', label = str(M[i]) + '$M_\odot$, $\\rho_\chi = 10^{13}$')
+##        plt.plot(mchi, sigma[1], ls = '--', color = 'dimgray', label = str(M[i]) + '$M_\odot$, $\\rho_\chi = 10^{16}$')
+##        plt.fill_between(mchi, sigma[0], 10**-25, color = area_color)
+##        plt.fill_between(mchi, sigma[1], 10**-25, color = area_color)
+##
+##
+##    #~~~~~~~~~~~~~ PLOTTING DD BOUNDS ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+##
+##    #PICO bounds, Current and NF from 10^3 - 10^16
+##    sigma_pico = 3.42e-40*(mchi_pico/10**3)
+##    sigma_picoNF = 8.67e-47*(mchi_nf)
+##
+##    #PICO60 Data up to ~ 10^3
+##    #plt.plot(mchi_P60_dat, sigma_P60_dat, color ='honeydew', ls = '-', linewidth = 1)
+##    plt.fill_between(mchi_P60_dat, sigma_P60_dat, 10**-25, color = 'dimgray')
+##
+##    #PICO60 FIT
+##    #plt.plot(mchi_pico, sigma_pico, color ='honeydew', ls = '-', linewidth = 1, label = 'PICO-60 SD Bounds')
+##    plt.fill_between(mchi_pico, sigma_pico, 10**-25, color = 'dimgray')
+##    plt.text(10**4, 10**-34, "PICO-60", color = 'white', fontsize = '12')
+##
+##    #PICO_NF Data up to ~ 10^3
+##    plt.plot(mchi_P60NF_dat, sigma_P60NF_dat, color = 'k', ls = '-', linewidth = 1.5)
+##
+##    #PICO_NF FIT
+##    plt.plot(mchi_nf, sigma_picoNF, color = 'k', ls = '-', linewidth = 1.5, label = 'PICO SD Neutrino Floor')
+##
+##
+##    plt.yscale('log')
+##    plt.xscale('log')
+##    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+##    plt.xlim(mchi[0], mchi[-1])
+##    #plt.ylim(plt.ylim()[0], 10**-30)
+##    plt.ylabel('$\sigma$ [$cm^2$]', fontsize =15)
+##    plt.title('BH Exclusion Bounds on $\sigma$ for Annhilating DM, Varying $M_\star$ and $\\rho_\chi$')
+##    plt.legend(loc = 'best', ncol = 2)
+##    plt.savefig('sigma_mchi_BH_Exclusion_Annihilating.png', dpi = 200)
+##    plt.show()
+
+
+
+elif plottype == 'Nx comp':
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+
+
+    E = 0
+
+    timespan = np.logspace(0, 10, 60)
+    rho_chis = [10**3, 10**4]
+    sigma = 10**-42
+    mchi = 10**4
+
+    Nx = []
+    Nx_a = []
+    Nx_limit = np.full(60, (5*10**48)*(mchi/10**3)**-3)
+
+
+    #Looping over all DM masses
+    for k in range(0, len(timespan)):
+
+        Nx.append(Nx_t_diff(mchi, 10**4, vbar, sigma, Sun, timespan[k]))
+        Nx_a.append(Nx_analytic(mchi, 10**4, vbar, sigma, Sun, timespan[k]))
+
+
+
+    #Plotting
+    plt.plot(timespan, Nx, color = 'b', label = 'Differential Nx')
+    plt.plot(timespan, Nx_a, color = 'r', label = 'Analytic Nx')
+
+
+    plt.plot(timespan, Nx_limit, color = 'k', ls = '--', label = '$N_\chi$ Limit')
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #print(mchi)
+    #print(sigma)
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('time [yrs]', fontsize = 15)
+    plt.xlim(timespan[0], timespan[-1])
+    #plt.ylim(10**-50, 10**-30)
+    plt.ylabel('$N_\chi$', fontsize = 15)
+    plt.title('Differential vs. Analytic $N_\chi$ Values')
+    plt.legend(loc = 'best', ncol = 2) 
+    plt.savefig('nx_comparison.png', dpi = 200)
+    plt.show()
+
 
 
 else:
