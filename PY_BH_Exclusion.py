@@ -1053,6 +1053,109 @@ def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
     
     return Nx_t1
 
+
+################################################################################################################
+#Functions from Sebastian Ellis Paper
+
+def captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon):
+
+    #Converting inputs to Decimal data type for greater accuracy
+    M = D(star.mass)
+    R = D(star.radius)
+    Mchi = D(Mchi)
+    rho_chi   = D(rho_chi)
+    vbar = D(vbar)
+
+    # Defining Constants
+    G         = D(6.6743*10**(-8))                      # gravitational constant in cgs units
+    mn        = D(0.93827)                              # mass of nucleons (protons) in star in GeV
+    mn_grams  = D(1.6726*10**(-24))                     # mass of nucleon in grams
+
+    #Converting Stellar properties to different units
+    R         = D(6.96e10)*R                            # convert radius to centimeters
+    M         = D(1.9885*(10**33))*M                    # convert mass to grams
+
+    #Calculating important Qtys. dependent on stellar parameters
+    Vesc      = D(np.sqrt(2*G*M/R))                     # escape velocity(cm/s)
+    Vstar = D(4/3) * D(np.pi) * (R**3)                  # Volume of Star (cm^3)
+    n = (D(0.75)*M/(mn_grams))/(Vstar)                  # Number density of hydrogen in star
+
+    #Number density of DM particles
+    nchi      = rho_chi/Mchi                            # number density(cm^{-3})
+
+    #Condition specifying cross-section to be used: True means X1T bound. Value means we use that value
+    if (sigma_xenon == True):
+        sigma     = D(1.26*10**(-40))*(Mchi/D(10**8))       # DM cross section XIT
+    else:
+        if(type(sigma_xenon) == np.ndarray):
+            sigma = D(sigma_xenon[0])
+        else:
+            sigma = D(sigma_xenon)
+
+    # calculate Beta (reduced mass)
+    beta   = (4*(Mchi)*mn)/((Mchi+mn)**2)
+
+    # Optical Depth, tau
+    tau    = 2 * R * sigma * n
+
+    #Initialize Partial Capture rate and total capture rate as an empty list and populate first two elements
+    # as place-holders
+    Cn = [1, 1]
+    Ctot = [1, 1]
+
+    #Initialize N = 1
+    N = 1
+
+    #Counts how many times Cn is less than the previous Cn. A way to implement a cutoff condition
+    less_count = 0
+
+    #Loop runs until cutoff conditions met.
+    #Cutoff conditions: If CN < C_N-1 a certain number of times (less_count) AND Ctot_N is within 0.1% of Ctot_N-1
+    #This is a way to ensure the sum has converged without adding unnecessary terms
+
+    while ((less_count <= 10 or abs(Ctot[N]/Ctot[N-1] - 1) > 0.001)):
+
+        # increase N by 1 each iteration, calculating for a new Capture Rate.
+        #NOTE: This means we start calculating at N = 2. BUT, we are essentially calculating for N-1 in each iteration
+        #      You will note this is the case when calculating VN, for example, where we use N-1 instead of N.
+        #      We do this because it is easier to compare the N capture rate with the previous capture rate.
+        N     += 1
+
+        # caluclate p_tau, probability of N scatters
+        pn_tau = D(2/tau**2)*D(N)*D(sc.gammainc(float(N+1),float(tau)))
+
+        # calculate V_N, velocity of DM particle after N scatters
+        VN     = Vesc*D(1-((beta)/2))**D((-1*(N-1))/2)
+
+        #FULL Partial capture rate equation, no approximations
+        Cn_temp = D(np.pi)*(R**2)*pn_tau*((D(np.sqrt(2))*nchi)/(D(np.sqrt(3*np.pi))*vbar))*((((2*vbar**2)+(3*Vesc**2))-((2*vbar**2)+(3*VN**2))*(np.exp(-1*((3*((VN**2)-(Vesc**2)))/(2*(vbar**2)))))))
+
+        #Populating partial cpature rate array
+        Cn.append(Cn_temp)
+
+        #Starts adding partial capture rates from Ctot[1], so there is an extra 1 added to capture rate. We subtract this
+        # from the return value
+        Ctot.append(Ctot[N-1]+Cn_temp)
+
+        #Less_count condition summed. Look at cutoff condition
+        if(Cn[N] < Cn[N-1]):
+            less_count += 1
+
+    #Remove first two place-holder elements
+    Cn.pop(0)
+    Cn.pop(0)
+
+    #Returns list: [Cn list, Ctot]
+    return Cn, Ctot[-1]-1
+
+def Mass_Accretion_Rate(star, Mchi, rho_chi, vbar, sigma_xenon):
+
+    capture = captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon)
+    mcap = capture * Mchi
+
+    return mcap
+
+
 ################################################################################################################
 #Plotting
 
@@ -1134,6 +1237,7 @@ if plottype == 'pop iii':
             temp = sigma_Nx_Ca(M300, mchi_dat[k], 10**19, vbar, 10**5) * rho_adjust[i]
             #Nx = N_chi_func_22(mchi_dat[k], temp, M300, rho_chis[i], vbar, 0)
             Nx = Nx_t_diff_Ca(mchi_dat[k], rho_chis[i], vbar, temp, M300, 10**5)
+
 
             #if Nx > (5*10**48)*(mchi_dat[k]/10**3)**-3:
 
