@@ -1057,103 +1057,46 @@ def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
 ################################################################################################################
 #Functions from Sebastian Ellis Paper
 
-def captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon):
+def DM_Mass_Capture(star, Mchi, rho_chi, vbar, sigma_xenon):
 
-    #Converting inputs to Decimal data type for greater accuracy
-    M = D(star.mass)
-    R = D(star.radius)
-    Mchi = D(Mchi)
-    rho_chi   = D(rho_chi)
-    vbar = D(vbar)
-
-    # Defining Constants
-    G         = D(6.6743*10**(-8))                      # gravitational constant in cgs units
-    mn        = D(0.93827)                              # mass of nucleons (protons) in star in GeV
-    mn_grams  = D(1.6726*10**(-24))                     # mass of nucleon in grams
-
-    #Converting Stellar properties to different units
-    R         = D(6.96e10)*R                            # convert radius to centimeters
-    M         = D(1.9885*(10**33))*M                    # convert mass to grams
-
-    #Calculating important Qtys. dependent on stellar parameters
-    Vesc      = D(np.sqrt(2*G*M/R))                     # escape velocity(cm/s)
-    Vstar = D(4/3) * D(np.pi) * (R**3)                  # Volume of Star (cm^3)
-    n = (D(0.75)*M/(mn_grams))/(Vstar)                  # Number density of hydrogen in star
-
-    #Number density of DM particles
-    nchi      = rho_chi/Mchi                            # number density(cm^{-3})
-
-    #Condition specifying cross-section to be used: True means X1T bound. Value means we use that value
-    if (sigma_xenon == True):
-        sigma     = D(1.26*10**(-40))*(Mchi/D(10**8))       # DM cross section XIT
-    else:
-        if(type(sigma_xenon) == np.ndarray):
-            sigma = D(sigma_xenon[0])
-        else:
-            sigma = D(sigma_xenon)
-
-    # calculate Beta (reduced mass)
-    beta   = (4*(Mchi)*mn)/((Mchi+mn)**2)
-
-    # Optical Depth, tau
-    tau    = 2 * R * sigma * n
-
-    #Initialize Partial Capture rate and total capture rate as an empty list and populate first two elements
-    # as place-holders
-    Cn = [1, 1]
-    Ctot = [1, 1]
-
-    #Initialize N = 1
-    N = 1
-
-    #Counts how many times Cn is less than the previous Cn. A way to implement a cutoff condition
-    less_count = 0
-
-    #Loop runs until cutoff conditions met.
-    #Cutoff conditions: If CN < C_N-1 a certain number of times (less_count) AND Ctot_N is within 0.1% of Ctot_N-1
-    #This is a way to ensure the sum has converged without adding unnecessary terms
-
-    while ((less_count <= 10 or abs(Ctot[N]/Ctot[N-1] - 1) > 0.001)):
-
-        # increase N by 1 each iteration, calculating for a new Capture Rate.
-        #NOTE: This means we start calculating at N = 2. BUT, we are essentially calculating for N-1 in each iteration
-        #      You will note this is the case when calculating VN, for example, where we use N-1 instead of N.
-        #      We do this because it is easier to compare the N capture rate with the previous capture rate.
-        N     += 1
-
-        # caluclate p_tau, probability of N scatters
-        pn_tau = D(2/tau**2)*D(N)*D(sc.gammainc(float(N+1),float(tau)))
-
-        # calculate V_N, velocity of DM particle after N scatters
-        VN     = Vesc*D(1-((beta)/2))**D((-1*(N-1))/2)
-
-        #FULL Partial capture rate equation, no approximations
-        Cn_temp = D(np.pi)*(R**2)*pn_tau*((D(np.sqrt(2))*nchi)/(D(np.sqrt(3*np.pi))*vbar))*((((2*vbar**2)+(3*Vesc**2))-((2*vbar**2)+(3*VN**2))*(np.exp(-1*((3*((VN**2)-(Vesc**2)))/(2*(vbar**2)))))))
-
-        #Populating partial cpature rate array
-        Cn.append(Cn_temp)
-
-        #Starts adding partial capture rates from Ctot[1], so there is an extra 1 added to capture rate. We subtract this
-        # from the return value
-        Ctot.append(Ctot[N-1]+Cn_temp)
-
-        #Less_count condition summed. Look at cutoff condition
-        if(Cn[N] < Cn[N-1]):
-            less_count += 1
-
-    #Remove first two place-holder elements
-    Cn.pop(0)
-    Cn.pop(0)
-
-    #Returns list: [Cn list, Ctot]
-    return Cn, Ctot[-1]-1
-
-def Mass_Accretion_Rate(star, Mchi, rho_chi, vbar, sigma_xenon):
-
-    capture = captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon)
+    #capture = float(captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon))
+    capture = float(capture_analytic(Mchi, star, rho_chi, vbar, sigma_xenon))
     mcap = capture * Mchi
 
     return mcap
+
+def Bondi_Rate(star):
+
+    mbondi = 4*np.pi*((G**2*star.mass**2)/c**3)*star.core_density
+
+    return mbondi
+
+def Hawking_Radiation(star, Mchi, rho_chi, vbar, sigma_xenon, t_1):
+
+    T_H = 1/(8*np.pi*G*M_BH(star, Mchi, rho_chi, vbar, sigma_xenon, t_1))
+    #mh = (n.pi**2/30)*g_eff*T_H**4*(4*np.pi*rx_Eff_SP(star, Mchi)**2)
+    mh = (n.pi**2/60)*T_H**4*(4*np.pi*rx_Eff_SP(star, Mchi)**2)
+
+    return mh
+
+def M_BH(star, Mchi, rho_chi, vbar, sigma_xenon, t_1):
+
+    mcap = DM_Mass_Capture(star, Mchi, rho_chi, vbar, sigma_xenon)
+    mbondi = Bondi_Rate(star)
+    mh = Hawking_Radiation(star, Mchi, rho_chi, vbar, sigma_xenon, t_1)
+
+    #Differential equation function
+    dMBHdt = lambda t, MBH, mcap = mcap, mbondi = mbondi, mh = mh: mcap + mbondi - mh
+    
+    #Nx(t)
+    sol = solve_ivp(dMBHdt, (0, t_1), [0], t_eval = [t_1])
+    
+    #Nx_t1 = # Of DM particles at t1
+    MBH_t1 = sol.y[0][0]
+
+    print(MBH_t1)
+
+    return MBH_t1
 
 
 ################################################################################################################
@@ -1198,7 +1141,8 @@ WD = PopIIIStar(1, .015, 10**-2, 10**5, 10**6, 10**10)
 plottype = input("Enter 'pop iii' for black hole exclusion with Pop III star parameters.\nEnter 'wd' for a reproduction of the black hole exclusion from 1012.2039.\n" +
                  "Enter 'Nx' to look at Nx values using 1012.2039 functions.\nEnter 'fig 1' for fig 1 replicated by reading data from the original plot.\n" +
                  "Enter 'Nx pop iii' for Nx values attained by Pop III stars.\nEnter 'final' for polished Nx Pop III exclusion plots.\n" +
-                 "Enter 'Nx comp' for a comparison of differential vs, analytic functions for nonannihilating DM.\n\n")
+                 "Enter 'Nx comp' for a comparison of differential vs, analytic functions for nonannihilating DM.\n" +
+                 "Enter 'ellis params' to implement BH mass accretion rates from Sebastian Ellis.\n\n")
 
 if plottype == 'pop iii':
 
@@ -1825,6 +1769,56 @@ elif plottype == 'Nx comp':
     plt.title('Differential vs. Analytic $N_\chi$ Values')
     plt.legend(loc = 'best', ncol = 2) 
     plt.savefig('nx_comparison.png', dpi = 200)
+    plt.show()
+
+
+elif plottype == "ellis params":
+
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+
+
+    E = 0
+
+    time = np.logspace(1, 6, 20)
+    print(time)
+    MBH = []
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(time)):
+
+        temp = M_BH(M300, 10**3, 10**16, vbar, 10**(-40), time[i])
+        print(temp)
+
+        MBH.append(temp)
+
+
+    #Plotting
+    plt.plot(time, MBH)
+
+
+    #slope, intercept = np.polyfit(np.log(time), np.log(MBH), 1)
+    #print("slope: " + str(slope))
+    #print("intercept: " + str(intercept))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #print(mchi)
+    #print(sigma)
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('Time [Years]', fontsize = 15)
+    #plt.xlim(mchi_dat[0], mchi_dat[-1])
+    #plt.ylim(plt.ylim()[0], 10**-20)
+    plt.ylabel('Black Hole Mass Rate', fontsize = 15)
+    plt.title('Ellis Params')
+    plt.legend(loc = 'best', ncol = 2)
+    #plt.savefig('fig1_wd_reproduce.png', dpi = 200)
     plt.show()
 
 
