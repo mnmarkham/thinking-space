@@ -1057,17 +1057,47 @@ def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
 ################################################################################################################
 #Functions from Sebastian Ellis Paper
 
+def self_gravitation_cond(star, mx):
+
+    #converting to grams to get final mass in g
+    cm_conversion = 2.84e37
+    s_conversion = 8.53e47
+    K_conversion = 6.52e36
+
+    k = 1.3807e-16
+
+    mchi = mx * 5.62e23
+
+    #m_acc = np.sqrt(3/(np.pi*(cm_conversion**3)*star.core_density))*((K_conversion*(cm_conversion**3)*star.core_temp)/((s_conversion**2)*G*mchi))**(3/2) #cgs units
+    m_acc = np.sqrt(3/(np.pi*star.core_density))*((k*star.core_temp)/(G*mchi))**(3/2)
+
+    return m_acc #in g
+
+def chandrasekhar_mass(mx):
+
+    #converting GeV to g
+    mchi = mx * 5.62e23
+
+    m_planck = 2.176434e-5 #in grams
+    m_ch = (m_planck**3)/(mchi**2) #in grams
+
+    return m_ch
+
 def DM_Mass_Capture(star, Mchi, rho_chi, vbar, sigma_xenon):
 
     #capture = float(captureN_pureH(star, Mchi, rho_chi, vbar, sigma_xenon))
     capture = float(capture_analytic(Mchi, star, rho_chi, vbar, sigma_xenon))
     mcap = capture * Mchi
 
+    print(mcap)
+
     return mcap
 
 def Bondi_Rate(star):
 
     mbondi = 4*np.pi*((G**2*star.mass**2)/c**3)*star.core_density
+
+    print(mbondi)
 
     return mbondi
 
@@ -1076,6 +1106,7 @@ def Hawking_Radiation(star, Mchi, rho_chi, vbar, sigma_xenon, t_1):
     T_H = 1/(8*np.pi*G*M_BH(star, Mchi, rho_chi, vbar, sigma_xenon, t_1))
     #mh = (n.pi**2/30)*g_eff*T_H**4*(4*np.pi*rx_Eff_SP(star, Mchi)**2)
     mh = (n.pi**2/60)*T_H**4*(4*np.pi*rx_Eff_SP(star, Mchi)**2)
+    print(mh)
 
     return mh
 
@@ -1085,8 +1116,12 @@ def M_BH(star, Mchi, rho_chi, vbar, sigma_xenon, t_1):
     mbondi = Bondi_Rate(star)
     mh = Hawking_Radiation(star, Mchi, rho_chi, vbar, sigma_xenon, t_1)
 
+    print(mcap)
+    print(mbondi)
+    print(mh)
+
     #Differential equation function
-    dMBHdt = lambda t, MBH, mcap = mcap, mbondi = mbondi, mh = mh: mcap + mbondi - mh
+    dMBHdt = lambda t, MBH, mcap = mcap, mbondi = mbondi, mh = mh: mcap + mbondi #- mh
     
     #Nx(t)
     sol = solve_ivp(dMBHdt, (0, t_1), [0], t_eval = [t_1])
@@ -1782,27 +1817,32 @@ elif plottype == "ellis params":
 
     E = 0
 
-    time = np.logspace(1, 6, 20)
-    print(time)
-    MBH = []
+    mchi = np.logspace(1, 10, 30)
+    M_acc = []
+    M_ch = []
 
 
     #Looping over all Stellar Masses
-    for i in range(0, len(time)):
+    for i in range(0, len(mchi)):
 
-        temp = M_BH(M300, 10**3, 10**16, vbar, 10**(-40), time[i])
-        print(temp)
+        temp = self_gravitation_cond(M100, mchi[i])
+        temp2 = chandrasekhar_mass(mchi[i])
 
-        MBH.append(temp)
+        M_sol = temp/1.9885e33
+        M_sol2 = temp2/1.9885e33
+
+        M_acc.append(M_sol)
+        M_ch.append(M_sol2)
 
 
     #Plotting
-    plt.plot(time, MBH)
+    plt.plot(mchi, M_acc)
+    #plt.plot(mchi, M_ch)
 
 
-    #slope, intercept = np.polyfit(np.log(time), np.log(MBH), 1)
-    #print("slope: " + str(slope))
-    #print("intercept: " + str(intercept))
+    slope, intercept = np.polyfit(np.log(mchi), np.log(M_acc), 1)
+    print("slope: " + str(slope))
+    print("intercept: " + str(intercept))
 
 
     #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1812,12 +1852,12 @@ elif plottype == "ellis params":
     
     plt.yscale('log')
     plt.xscale('log')
-    plt.xlabel('Time [Years]', fontsize = 15)
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
     #plt.xlim(mchi_dat[0], mchi_dat[-1])
     #plt.ylim(plt.ylim()[0], 10**-20)
-    plt.ylabel('Black Hole Mass Rate', fontsize = 15)
+    plt.ylabel('$M_{acc}$ [$M_\odot$]', fontsize = 15)
     plt.title('Ellis Params')
-    plt.legend(loc = 'best', ncol = 2)
+    #plt.legend(loc = 'best', ncol = 2)
     #plt.savefig('fig1_wd_reproduce.png', dpi = 200)
     plt.show()
 
