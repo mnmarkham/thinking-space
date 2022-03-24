@@ -1059,17 +1059,24 @@ def Nx_t_diff_Ca(mx, rho_chi, vbar, sigma, star, t_1):
 
 def self_gravitation_cond(star, mx):
 
-    #converting to grams to get final mass in g
+    #converting to grams to get final mass in g, use for k = 1
     cm_conversion = 2.84e37
     s_conversion = 8.53e47
     K_conversion = 6.52e36
 
+    #boltzmann constant in cgs units
     k = 1.3807e-16
 
-    mchi = mx * 5.62e23
+    G = 6.6743e-8
 
-    #m_acc = np.sqrt(3/(np.pi*(cm_conversion**3)*star.core_density))*((K_conversion*(cm_conversion**3)*star.core_temp)/((s_conversion**2)*G*mchi))**(3/2) #cgs units
-    m_acc = np.sqrt(3/(np.pi*star.core_density))*((k*star.core_temp)/(G*mchi))**(3/2)
+    #converting GeV to g
+    mchi = mx / 5.62e23
+
+    #m_acc = np.sqrt(3/(np.pi*(cm_conversion**3)*star.core_density))*((K_conversion*(cm_conversion**3)*star.core_temp)/((s_conversion**2)*G*mchi))**(3/2) #naturalized cgs units
+    m_acc = np.sqrt( 3/(np.pi*(star.core_density)) )*(( (k*(star.core_temp)) / (G*mchi) )**(3/2)) #k constant cgs units
+    #m_acc = ((3/(3.14*30))**(1/2)) * (((10**(-16)*10**7)/(10**(-8)*5.62*10**(-23)))**(3/2))
+
+    #print(m_acc)
 
     return m_acc #in g
 
@@ -1835,6 +1842,8 @@ elif plottype == "ellis params":
         M_ch.append(M_sol2)
 
 
+    print(M_acc)
+    
     #Plotting
     plt.plot(mchi, M_acc)
     #plt.plot(mchi, M_ch)
@@ -1856,9 +1865,9 @@ elif plottype == "ellis params":
     #plt.xlim(mchi_dat[0], mchi_dat[-1])
     #plt.ylim(plt.ylim()[0], 10**-20)
     plt.ylabel('$M_{acc}$ [$M_\odot$]', fontsize = 15)
-    plt.title('Ellis Params')
+    plt.title('Self-Gravitating Mass Limit for $M_\star$ = 100 $M_\odot$')
     #plt.legend(loc = 'best', ncol = 2)
-    #plt.savefig('fig1_wd_reproduce.png', dpi = 200)
+    plt.savefig('self_gravitating_exclusion.png', dpi = 200)
     plt.show()
 
 
