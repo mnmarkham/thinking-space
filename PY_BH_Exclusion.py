@@ -1083,12 +1083,22 @@ def self_gravitation_cond(star, mx):
 def chandrasekhar_mass(mx):
 
     #converting GeV to g
-    mchi = mx * 5.62e23
+    mchi = mx / 5.62e23
 
     m_planck = 2.176434e-5 #in grams
     m_ch = (m_planck**3)/(mchi**2) #in grams
 
     return m_ch
+
+def kaup_mass(mx):
+
+    #converting GeV to g
+    mchi = mx / 5.62e23
+
+    m_planck = 2.176434e-5 #in grams
+    m_k = 0.633*((m_planck**2)/mchi) #in grams
+
+    return m_k
 
 def DM_Mass_Capture(star, Mchi, rho_chi, vbar, sigma_xenon):
 
@@ -1824,9 +1834,10 @@ elif plottype == "ellis params":
 
     E = 0
 
-    mchi = np.logspace(1, 10, 30)
+    mchi = np.logspace(-3, 18, 30)
     M_acc = []
     M_ch = []
+    M_K = []
 
 
     #Looping over all Stellar Masses
@@ -1834,19 +1845,23 @@ elif plottype == "ellis params":
 
         temp = self_gravitation_cond(M100, mchi[i])
         temp2 = chandrasekhar_mass(mchi[i])
+        temp3 = kaup_mass(mchi[i])
 
         M_sol = temp/1.9885e33
         M_sol2 = temp2/1.9885e33
+        M_sol3 = temp3/1.9885e33
 
         M_acc.append(M_sol)
         M_ch.append(M_sol2)
+        M_K.append(M_sol3)
 
 
     print(M_acc)
     
     #Plotting
-    plt.plot(mchi, M_acc)
-    #plt.plot(mchi, M_ch)
+    plt.plot(mchi, M_acc, color = "red", linewidth = 3, label = "$M_{sg}$")
+    plt.plot(mchi, M_ch, color = "black", linewidth = 3, label = "$M_{Ch}$")
+    plt.plot(mchi, M_K, color = "lightblue", linewidth = 3, label = "$M_{Kaup}$")
 
 
     slope, intercept = np.polyfit(np.log(mchi), np.log(M_acc), 1)
@@ -1862,11 +1877,11 @@ elif plottype == "ellis params":
     plt.yscale('log')
     plt.xscale('log')
     plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
-    #plt.xlim(mchi_dat[0], mchi_dat[-1])
+    plt.xlim(mchi[0], mchi[-1])
     #plt.ylim(plt.ylim()[0], 10**-20)
     plt.ylabel('$M_{acc}$ [$M_\odot$]', fontsize = 15)
-    plt.title('Self-Gravitating Mass Limit for $M_\star$ = 100 $M_\odot$')
-    #plt.legend(loc = 'best', ncol = 2)
+    plt.title('Self-Gravitating Mass Limit for $M_\star$ = 100 $M_\odot$', fontsize = 18)
+    plt.legend(loc = 'lower left', ncol = 1, fontsize = 15)
     plt.savefig('self_gravitating_exclusion.png', dpi = 200)
     plt.show()
 
