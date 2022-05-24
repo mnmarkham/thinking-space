@@ -1150,6 +1150,48 @@ def M_BH(star, Mchi, rho_chi, vbar, sigma_xenon, t_1):
 
     return MBH_t1
 
+def M_core_asymmetric(Mchi, star, rho_chi, vbar, sigma_xenon):
+    
+    mx = Mchi / 5.62e23
+    
+    cap = float(capture_analytic(Mchi, star, rho_chi, vbar, sigma_xenon))
+    mass = cap * mx * star.lifetime * 3.15e7
+     
+    return mass
+
+def sigma_BH(star, Mchi, rho_chi, vbar): #Takes M, R and L in solar units
+
+
+    #Self-gravitating mass limit
+    M_sg = self_gravitation_cond(star, Mchi)
+
+    #First guess for sigma based on Xenon1T bounds
+    sigma = (1.26*10**(-40))*(Mchi/(10**8))
+
+
+    #First guess for M_DM
+    M_DM = M_core_asymmetric(Mchi, star, rho_chi, vbar, sigma)
+
+    #Sigma is found when log(Ctot_num) - log(Ctot_true) becomes less than stipulated
+    # See Eq. 2.2-2.3 of companion paper for conditions
+    while(abs(np.log10(M_DM) - np.log10(M_sg)) > 0.004):
+
+        #Rate at which sigma is multiplied/divided by to get closer and closer to true Capture Rate
+        #See Eq. 2.4 of companion paper
+        rate = abs(np.log10(M_DM) - np.log10(M_sg))*10
+
+        #Tells whether divide or multiply by rate depending on if our guess is too big or too small
+        if (M_DM/M_sg > 1):
+            sigma = sigma * (1/rate)
+        else:
+            sigma = sigma * rate
+
+        # Recalculates new guess for M_DM
+        M_DM = M_core_asymmetric(Mchi, star, rho_chi, vbar, sigma)
+        
+
+    return sigma
+
 
 ################################################################################################################
 #Plotting
@@ -1194,7 +1236,8 @@ plottype = input("Enter 'pop iii' for black hole exclusion with Pop III star par
                  "Enter 'Nx' to look at Nx values using 1012.2039 functions.\nEnter 'fig 1' for fig 1 replicated by reading data from the original plot.\n" +
                  "Enter 'Nx pop iii' for Nx values attained by Pop III stars.\nEnter 'final' for polished Nx Pop III exclusion plots.\n" +
                  "Enter 'Nx comp' for a comparison of differential vs, analytic functions for nonannihilating DM.\n" +
-                 "Enter 'ellis params' to implement BH mass accretion rates from Sebastian Ellis.\n\n")
+                 "Enter 'ellis params' to implement BH mass accretion rates from Sebastian Ellis.\n" + 
+                 "Enter 'ellis sigma' for a sigma exclusion plot using Ellis parameters.\n\n")
 
 if plottype == 'pop iii':
 
@@ -1884,7 +1927,156 @@ elif plottype == "ellis params":
     plt.legend(loc = 'lower left', ncol = 1, fontsize = 15)
     plt.savefig('self_gravitating_exclusion.png', dpi = 200)
     plt.show()
+    
+    
+    
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
 
+
+    E = 0
+
+    mchi = np.logspace(1, 5, 28)
+    M_acc = []
+    M_ch = []
+    M_K = []
+
+
+    #Looping over all Stellar Masses
+    for i in range(0, len(mchi)):
+
+        temp = self_gravitation_cond(M100, mchi[i])
+        temp2 = chandrasekhar_mass(mchi[i])
+        temp3 = kaup_mass(mchi[i])
+
+        M_sol = temp/1.9885e33
+        M_sol2 = temp2/1.9885e33
+        M_sol3 = temp3/1.9885e33
+
+        M_acc.append(M_sol)
+        M_ch.append(M_sol2)
+        M_K.append(M_sol3)
+
+
+    print(M_acc)
+    
+    
+    mchi_dat = np.logspace(1, 5, 28)
+
+    E = 0
+    sigma = 10**-40
+    M_DM = []
+    
+    for i in range(0, len(mchi_dat)):
+        
+        temp = M_core_asymmetric(mchi_dat[i], M100, 10**13, vbar, sigma)
+        M_DM.append(temp/1.9885e33)
+        
+    plt.plot(mchi_dat, M_DM, color = "pink")
+    
+    
+
+    # sigma = 10**-40
+    # N_chi = [ [],[] ]
+    # M_DM = [ [],[] ]
+
+
+
+    # for j in range(0, len(rho_chi_list)):
+
+    #     #Looping over all DM masses
+    #     for k in range(0, len(mchi_dat)):
+
+    #         if mchi_dat[k] <= 10**6:
+    #             N_chi[j].append(N_chi_func_22(mchi_dat[k], sigma, M100, rho_chi_list[j], vbar, E))
+    #             #N_chi[i][j].append(Nx_t_diff(mchi_dat[k], rho_chi_list[j], vbar, sigma, star, 10**6))
+    #             M_DM[j].append(N_chi[j][k]*mchi_dat[k])
+
+    #             temp = M_DM[j][k]
+    #             M_DM[j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+
+    #         else:
+    #             sigma = sigma_mchi_pureH(M100, mchi_dat[k], 10**19, vbar) * rho_chi_adjust[j]
+
+    #             N_chi[j].append(N_chi_func_22(mchi_dat[k], sigma, M100, rho_chi_list[j], vbar, E))
+    #             M_DM[j].append(N_chi[j][k]*mchi_dat[k])
+
+    #             temp = M_DM[j][k]
+    #             M_DM[j][k] = temp * 1.78*10**-24 * 5.028*10**-34
+
+
+    #     #Plotting
+    #     plt.plot(mchi_dat, M_DM[j], color = "pink")
+
+
+    # plt.fill_between(mchi_dat, M_DM[0], M_DM[1], color = "pink", label = '$M_{DM}$, $\\rho_\chi = 10^{13} - 10^{16}$')
+
+    # slope, intercept = np.polyfit(np.log(mchi_dat), np.log(M_DM[1]), 1)
+    # print("slope: " + str(slope))
+    
+    #Plotting
+    plt.plot(mchi, M_acc, color = "red", linewidth = 3, label = "$M_{sg}$")
+    plt.plot(mchi, M_ch, color = "black", linewidth = 3, label = "$M_{Ch}$")
+    plt.plot(mchi, M_K, color = "lightblue", linewidth = 3, label = "$M_{Kaup}$")
+
+
+    slope, intercept = np.polyfit(np.log(mchi), np.log(M_acc), 1)
+    print("slope: " + str(slope))
+    print("intercept: " + str(intercept))
+
+
+    #~~~~~~~~~~~~~~~~~~ FINAL PLOT FORMATTING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #print(mchi)
+    #print(sigma)
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    #plt.ylim(plt.ylim()[0], 10**-20)
+    plt.ylabel('$M_{acc}$ [$M_\odot$]', fontsize = 15)
+    plt.title('Self-Gravitating Mass Limit for $M_\star$ = 100 $M_\odot$', fontsize = 18)
+    plt.legend(loc = 'lower left', ncol = 1, fontsize = 15)
+    #plt.savefig('self_gravitating_exclusion.png', dpi = 200)
+    plt.show()
+
+
+elif plottype == "ellis sigma":
+    
+    #Figure Formatting
+    fig = plt.figure(figsize = (12, 10))
+    plt.style.use('fast')
+    palette = plt.get_cmap('viridis')
+    
+    E = 0
+    
+    mchi = np.logspace(1, 5, 28)
+    sigma = []
+    
+    for i in range(0, len(mchi)):
+        temp = sigma_BH(M100, mchi[i], 10**13, vbar)
+        sigma.append(temp)
+        
+    plt.plot(mchi, sigma)
+    
+    slope, intercept = np.polyfit(np.log(mchi), np.log(sigma), 1)
+    print("slope: " + str(slope))
+    print("intercept: " + str(intercept))
+    
+    
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel('$m_\chi$ [GeV]', fontsize = 15)
+    plt.xlim(mchi[0], mchi[-1])
+    #plt.ylim(plt.ylim()[0], 10**-20)
+    plt.ylabel('$\sigma$ [$cm^2$]', fontsize = 15)
+    plt.title('Self-Gravitating Mass Exclusion for $M_\star$ = 100 $M_\odot$', fontsize = 18)
+    #plt.legend(loc = 'lower left', ncol = 1, fontsize = 15)
+    #plt.savefig('self_gravitating_exclusion.png', dpi = 200)
+    plt.show()
 
 
 else:
